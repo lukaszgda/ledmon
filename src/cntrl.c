@@ -1,6 +1,6 @@
 /*
  * Intel(R) Enclosure LED Utilities
- * Copyright (C) 2009-2019 Intel Corporation.
+ * Copyright (C) 2009-2021 Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -36,7 +36,8 @@
 #include "status.h"
 #include "sysfs.h"
 #include "utils.h"
-#include "amd_sgpio.h"
+#include "amd.h"
+#include "npem.h"
 
 /**
  * @brief Name of controllers types.
@@ -50,7 +51,8 @@ static const char * const ctrl_type_str[] = {
 	[CNTRL_TYPE_VMD]     = "VMD",
 	[CNTRL_TYPE_SCSI]    = "SCSI",
 	[CNTRL_TYPE_AHCI]    = "AHCI",
-	[CNTRL_TYPE_AMD_SGPIO] = "AMD SGPIO"
+	[CNTRL_TYPE_NPEM]    = "NPEM",
+	[CNTRL_TYPE_AMD]     = "AMD",
 };
 
 /**
@@ -70,7 +72,7 @@ static int _is_isci_cntrl(const char *path)
 
 /**
  */
-static int _is_ahci_cntrl(const char *path)
+static int _is_cntrl(const char *path, const char *type)
 {
 	char temp[PATH_MAX], link[PATH_MAX], *t;
 
@@ -80,10 +82,20 @@ static int _is_ahci_cntrl(const char *path)
 		return 0;
 
 	t = strrchr(link, '/');
-	if ((t != NULL) && (strcmp(t + 1, "ahci") != 0))
+	if ((t != NULL) && (strcmp(t + 1, type) != 0))
 		return 0;
 
 	return 1;
+}
+
+static int _is_ahci_cntrl(const char *path)
+{
+	return _is_cntrl(path, "ahci");
+}
+
+static int _is_nvme_cntrl(const char *path)
+{
+	return _is_cntrl(path, "nvme");
 }
 
 static int _is_intel_ahci_cntrl(const char *path)
@@ -100,6 +112,37 @@ static int _is_amd_ahci_cntrl(const char *path)
 		return 0;
 
 	return get_uint64(path, 0, "vendor") == 0x1022L;
+}
+
+static int _is_amd_nvme_cntrl(const char *path)
+{
+	char tmp[PATH_MAX];
+	char *t;
+
+	memset(&tmp, 0, sizeof(tmp));
+
+	if (!_is_nvme_cntrl(path))
+		return 0;
+
+	strncpy(tmp, path, PATH_MAX - 1);
+	t = strrchr(tmp, '/');
+	if (!t)
+		return 0;
+
+	t++;
+	*t = '\0';
+	return get_uint64(tmp, 0, "vendor") == 0x1022L;
+}
+
+static int _is_amd_cntrl(const char *path)
+{
+	if (_is_amd_ahci_cntrl(path))
+		return 1;
+
+	if (_is_amd_nvme_cntrl(path))
+		return 1;
+
+	return 0;
 }
 
 extern int get_dell_server_type(void);
@@ -158,6 +201,11 @@ static int _is_vmd_cntrl(const char *path)
 	return sysfs_check_driver(path, "vmd");
 }
 
+static int _is_npem_cntrl(const char *path)
+{
+	return is_npem_capable(path);
+}
+
 /**
  * @brief Determines the type of controller.
  *
@@ -174,16 +222,17 @@ static int _is_vmd_cntrl(const char *path)
 static enum cntrl_type _get_type(const char *path)
 {
 	enum cntrl_type type = CNTRL_TYPE_UNKNOWN;
-
-	if (_is_vmd_cntrl(path)) {
+	if (_is_npem_cntrl(path)) {
+		type = CNTRL_TYPE_NPEM;
+	} else if (_is_vmd_cntrl(path)) {
 		type = CNTRL_TYPE_VMD;
 	} else if (_is_dellssd_cntrl(path)) {
 		type = CNTRL_TYPE_DELLSSD;
 	} else if (_is_storage_controller(path)) {
 		if (_is_intel_ahci_cntrl(path))
 			type = CNTRL_TYPE_AHCI;
-		else if (_is_amd_ahci_cntrl(path))
-			type = CNTRL_TYPE_AMD_SGPIO;
+		else if (_is_amd_cntrl(path))
+			type = CNTRL_TYPE_AMD;
 		else if (_is_isci_cntrl(path)
 				|| sysfs_enclosure_attached_to_cntrl(path)
 				|| _is_smp_cntrl(path))
@@ -348,46 +397,47 @@ struct cntrl_device *cntrl_device_init(const char *path)
 
 	type = _get_type(path);
 	if (type != CNTRL_TYPE_UNKNOWN) {
+		if (!list_is_empty(&conf.cntrls_whitelist)) {
+			char *cntrl = NULL;
+
+			list_for_each(&conf.cntrls_whitelist, cntrl) {
+				if (match_string(cntrl, path))
+					break;
+				cntrl = NULL;
+			}
+			if (!cntrl) {
+				log_debug("%s not found on whitelist, ignoring", path);
+				return NULL;
+			}
+		} else if (!list_is_empty(&conf.cntrls_blacklist)) {
+			char *cntrl;
+
+			list_for_each(&conf.cntrls_blacklist, cntrl) {
+				if (match_string(cntrl, path)) {
+					log_debug("%s found on blacklist, ignoring",
+						  path);
+					return NULL;
+				}
+			}
+		}
 		switch (type) {
 		case CNTRL_TYPE_DELLSSD:
 		case CNTRL_TYPE_SCSI:
 		case CNTRL_TYPE_VMD:
+		case CNTRL_TYPE_NPEM:
 			em_enabled = 1;
 			break;
 		case CNTRL_TYPE_AHCI:
 			em_enabled = _ahci_em_messages(path);
 			break;
-		case CNTRL_TYPE_AMD_SGPIO:
-			em_enabled = amd_sgpio_em_enabled(path);
+		case CNTRL_TYPE_AMD:
+			em_enabled = amd_em_enabled(path);
 			break;
 		default:
 			em_enabled = 0;
 		}
 		if (em_enabled) {
-			if (!list_is_empty(&conf.cntrls_whitelist)) {
-				char *cntrl = NULL;
-
-				list_for_each(&conf.cntrls_whitelist, cntrl) {
-					if (match_string(cntrl, path))
-						break;
-					cntrl = NULL;
-				}
-				if (!cntrl) {
-					log_debug("%s not found on whitelist, ignoring", path);
-					return NULL;
-				}
-			} else if (!list_is_empty(&conf.cntrls_blacklist)) {
-				char *cntrl;
-
-				list_for_each(&conf.cntrls_blacklist, cntrl) {
-					if (match_string(cntrl, path)) {
-						log_debug("%s found on blacklist, ignoring",
-							  path);
-						return NULL;
-					}
-				}
-			}
-			device = malloc(sizeof(struct cntrl_device));
+			device = calloc(1, sizeof(struct cntrl_device));
 			if (device) {
 				if (type == CNTRL_TYPE_SCSI) {
 					device->isci_present = _is_isci_cntrl(path);
@@ -397,7 +447,7 @@ struct cntrl_device *cntrl_device_init(const char *path)
 					device->hosts = NULL;
 				}
 				device->cntrl_type = type;
-				device->sysfs_path = str_dup(path);
+				strncpy(device->sysfs_path, path, PATH_MAX - 1);
 			}
 		} else {
 			log_error
@@ -415,7 +465,6 @@ struct cntrl_device *cntrl_device_init(const char *path)
 void cntrl_device_fini(struct cntrl_device *device)
 {
 	if (device) {
-		free(device->sysfs_path);
 		free_hosts(device->hosts);
 		free(device);
 	}

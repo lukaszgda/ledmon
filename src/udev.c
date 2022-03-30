@@ -1,6 +1,6 @@
 /*
  * Intel(R) Enclosure LED Utilities
- * Copyright (C) 2017-2019 Intel Corporation.
+ * Copyright (C) 2017-2020 Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -191,7 +191,8 @@ int handle_udev_event(struct list *ledmon_block_list)
 		if (act == UDEV_ACTION_ADD) {
 			log_debug("ADDED %s", block->sysfs_path);
 			if (block->ibpi == IBPI_PATTERN_FAILED_DRIVE ||
-				block->ibpi == IBPI_PATTERN_REMOVED)
+				block->ibpi == IBPI_PATTERN_REMOVED ||
+				block->ibpi == IBPI_PATTERN_UNKNOWN)
 				block->ibpi = IBPI_PATTERN_ADDED;
 		} else if (act == UDEV_ACTION_REMOVE) {
 			log_debug("REMOVED %s", block->sysfs_path);

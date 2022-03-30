@@ -1,6 +1,6 @@
 /*
  * Intel(R) Enclosure LED Utilities
- * Copyright (C) 2009-2018 Intel Corporation.
+ * Copyright (C) 2009-2021 Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -21,6 +21,7 @@
 #define _ENCLOSURE_H_INCLUDED_
 
 #include <stdint.h>
+#include <limits.h>
 
 #include "ses.h"
 
@@ -35,7 +36,7 @@ struct enclosure_device {
    * Path to an enclosure device in sysfs tree. This is controller base
    * canonical path.
    */
-	char *sysfs_path;
+	char sysfs_path[PATH_MAX];
 
   /**
    * SAS address as identifier of an enclosure.
@@ -47,7 +48,10 @@ struct enclosure_device {
    */
 	char *dev_path;
 
-	struct ses_pages *ses_pages;
+	struct ses_pages ses_pages;
+
+	struct ses_slot *slots;
+	int slots_count;
 };
 
 /**
@@ -77,5 +81,7 @@ struct enclosure_device *enclosure_device_init(const char *path);
  * @return The function does not return a value.
  */
 void enclosure_device_fini(struct enclosure_device *enclosure);
+
+int enclosure_open(const struct enclosure_device *enclosure);
 
 #endif				/* _ENCLOSURE_H_INCLUDED_ */

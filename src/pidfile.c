@@ -1,6 +1,6 @@
 /*
  * Intel(R) Enclosure LED Utilities
- * Copyright (C) 2009-2019 Intel Corporation.
+ * Copyright (C) 2009-2021 Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -56,7 +56,7 @@ status_t pidfile_create(const char *name)
 		close(fd);
 		return STATUS_FILE_LOCK_ERROR;
 	}
-	sprintf(buf, "%d\n", getpid());
+	snprintf(buf, PATH_MAX, "%d\n", getpid());
 	count = write(fd, buf, strlen(buf));
 	close(fd);
 	return (count < 0) ? STATUS_FILE_WRITE_ERROR : STATUS_SUCCESS;
@@ -99,7 +99,8 @@ status_t pidfile_check(const char *name, pid_t *pid)
 	p = buf_read(path);
 	if (p == NULL)
 		return STATUS_INVALID_PATH;
-	tp = atoi(p);
+	if (str_toi(&tp, p, NULL, 10) != 0)
+		return STATUS_DATA_ERROR;
 	if (pid)
 		*pid = tp;
 	free(p);

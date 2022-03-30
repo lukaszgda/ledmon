@@ -1,11 +1,15 @@
 
 AC_PREREQ([2.69])
-AC_INIT([ledmon], [0.93])
+AC_INIT([ledmon], [0.95])
 AC_CONFIG_MACRO_DIR([m4])
-AC_SUBST([PACKAGE_DATE], "October 2019")
+AC_SUBST([PACKAGE_DATE], "January 2021")
 AM_INIT_AUTOMAKE([-Wall -Werror foreign])
 
 # Checks for programs.
+
+AX_CHECK_PROG([gcc])
+AX_CHECK_PROG([make])
+
 AM_PROG_CC_C_O
 AC_PROG_CC_C99
 AC_PROG_INSTALL
@@ -26,14 +30,18 @@ AX_AM_CFLAGS_ADD([-Werror=format-signedness])
 
 AC_SUBST([AM_CFLAGS])
 AC_SUBST([AM_CPPFLAGS])
+AC_PREFIX_DEFAULT(/usr)
 
 # Automake 1.11 - silent build rules
 m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
 
+PKG_PROG_PKG_CONFIG
+
 # Checks for libraries.
 AC_CHECK_LIB([rt], [shm_unlink], [], [AC_MSG_ERROR(librt not found)])
 AC_CHECK_LIB([sgutils2], [sg_ll_send_diag], [], [AC_MSG_ERROR(libsgutils not found)])
-AC_CHECK_LIB([udev], [udev_new], [], [AC_MSG_ERROR(libudev not found)])
+PKG_CHECK_MODULES([LIBUDEV], [libudev])
+PKG_CHECK_MODULES([LIBPCI], [libpci])
 
 # Checks for header files.
 AC_CHECK_HEADERS([fcntl.h inttypes.h limits.h stdint.h stdlib.h string.h sys/file.h sys/ioctl.h sys/param.h sys/time.h syslog.h unistd.h])
@@ -58,13 +66,10 @@ AC_CHECK_FUNCS([ftruncate memset munmap realpath regcomp select strcasecmp strch
 
 # configure options
 AC_ARG_ENABLE(systemd, AS_HELP_STRING([--enable-systemd], [install ledmon systemd service]))
-AC_ARG_ENABLE(testconfig, AS_HELP_STRING([--enable-testconfig], [build test_config tool]))
 
 AS_IF([test "x$enable_systemd" = xyes], [SYSTEMD_STR=yes], [SYSTEMD_STR=no])
-AS_IF([test "x$enable_testconfig" = xyes], [TESTCONFIG_STR=yes], [TESTCONFIG_STR=no])
 
 AM_CONDITIONAL([SYSTEMD_CONDITION], [test "$SYSTEMD_STR" = yes])
-AM_CONDITIONAL([TESTCONFIG_CONDITION], [test "$TESTCONFIG_STR" = yes])
 
 # target directory for ledmon service file
 AC_SUBST([SYSTEMD_PATH], "$(pkg-config systemd --variable=systemdsystemunitdir)")
@@ -82,5 +87,4 @@ $PACKAGE_NAME $VERSION configuration:
   C compiler flags:        ${AM_CFLAGS} ${CFLAGS}
   Common install location: ${prefix}
   configure parameters:    --enable-systemd=${SYSTEMD_STR}
-                           --enable-testconfig=${TESTCONFIG_STR}
 ])

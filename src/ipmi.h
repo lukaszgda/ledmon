@@ -1,6 +1,5 @@
 /*
- * Intel(R) Enclosure LED Utilities
- * Copyright (C) 2009-2019 Intel Corporation.
+ * Generic IPMI Interface
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -17,23 +16,7 @@
  *
  */
 
-#ifndef _VERSION_H_INCLUDED_
-#define _VERSION_H_INCLUDED_
+#define BMC_SA 0x20
 
-/**
- * The major number of LEDCTL utilities package. This number may be overwrite
- * in makefile to reflect current version number.
- */
-#ifndef VERSION_MAJOR
-#define VERSION_MAJOR    0
-#endif
-
-/**
- * The minor number of LEDCTL utilities package. This number may be overwrite
- * in makefile to reflect current version number.
- */
-#ifndef VERSION_MINOR
-#define VERSION_MINOR    93
-#endif
-
-#endif				/* _VERSION_H_INCLUDED_ */
+int ipmicmd(int sa, int lun, int netfn, int cmd, int datalen, void *data,
+	    int resplen, int *rlen, void *resp);

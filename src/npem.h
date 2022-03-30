@@ -1,6 +1,6 @@
 /*
- * AMD SGPIO LED control
- * Copyright (C) 2019, Advanced Micro Devices, Inc.
+ * Intel(R) Enclosure LED Utilities
+ * Copyright (C) 2019-2020 Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -17,8 +17,13 @@
  *
  */
 
+#ifndef NPEM_H_INCLUDED_
+#define NPEM_H_INCLUDED_
 #include "block.h"
+#include "ibpi.h"
 
-int _amd_sgpio_em_enabled(const char *path);
-int _amd_sgpio_write(struct block_device *device, enum ibpi_pattern ibpi);
-char *_amd_sgpio_get_path(const char *cntrl_path);
+int is_npem_capable(const char *path);
+int npem_write(struct block_device *device, enum ibpi_pattern ibpi);
+char *npem_get_path(const char *cntrl_path);
+
+#endif // NPEM_H_INCLUDED_

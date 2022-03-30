@@ -1,6 +1,6 @@
 /*
  * Intel(R) Enclosure LED Utilities
- * Copyright (C) 2009-2019 Intel Corporation.
+ * Copyright (C) 2009-2021 Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -17,6 +17,7 @@
  *
  */
 
+#include <config_ac.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <getopt.h>
@@ -55,7 +56,6 @@
 #include "sysfs.h"
 #include "udev.h"
 #include "utils.h"
-#include "version.h"
 #include "vmdssd.h"
 
 /**
@@ -118,8 +118,8 @@ const char *ibpi_str[] = {
  * Internal variable of monitor service. It is the pattern used to print out
  * information about the version of monitor service.
  */
-static char *ledmon_version = "Intel(R) Enclosure LED Monitor Service %d.%d %s\n"
-			      "Copyright (C) 2009-2019 Intel Corporation.\n";
+static char *ledmon_version = "Intel(R) Enclosure LED Monitor Service %s %s\n"
+			      "Copyright (C) 2009-2021 Intel Corporation.\n";
 
 /**
  * Internal variable of monitor service. It is used to help parse command line
@@ -216,7 +216,7 @@ static void _ledmon_status(int status, void *arg)
  */
 static void _ledmon_version(void)
 {
-	printf(ledmon_version, VERSION_MAJOR, VERSION_MINOR, BUILD_LABEL);
+	printf(ledmon_version, PACKAGE_VERSION, BUILD_LABEL);
 	printf("\nThis is free software; see the source for copying conditions."
 	       " There is NO warranty;\nnot even for MERCHANTABILITY or FITNESS"
 	       " FOR A PARTICULAR PURPOSE.\n\n");
@@ -234,7 +234,7 @@ static void _ledmon_version(void)
  */
 static void _ledmon_help(void)
 {
-	printf(ledmon_version, VERSION_MAJOR, VERSION_MINOR, BUILD_LABEL);
+	printf(ledmon_version, PACKAGE_VERSION, BUILD_LABEL);
 	printf("\nUsage: %s [OPTIONS]\n\n", progname);
 	printf("Mandatory arguments for long options are mandatory for short "
 	       "options, too.\n\n");
@@ -292,7 +292,10 @@ static status_t _set_config_path(char **conf_path, const char *path)
  */
 static status_t _set_sleep_interval(const char *optarg)
 {
-	conf.scan_interval = atoi(optarg);
+	if (str_toi(&conf.scan_interval, optarg, NULL, 10) != 0) {
+		log_error("Cannot parse sleep interval");
+		return STATUS_CMDLINE_ERROR;
+	}
 	if (conf.scan_interval < LEDMON_MIN_SLEEP_INTERVAL) {
 		log_warning("sleep interval too small... using default.");
 		conf.scan_interval = LEDMON_DEF_SLEEP_INTERVAL;
@@ -837,7 +840,10 @@ static void _close_parent_fds(void)
 		char *elem;
 
 		list_for_each(&dir, elem) {
-			int fd = (int)strtol(basename(elem), NULL, 10);
+			int fd;
+
+			if (str_toi(&fd, basename(elem), NULL, 10) != 0)
+				continue;
 
 			if (fd != get_log_fd())
 				close(fd);
@@ -864,7 +870,7 @@ int main(int argc, char *argv[])
 	if (_cmdline_parse_non_daemonise(argc, argv) != STATUS_SUCCESS)
 		return STATUS_CMDLINE_ERROR;
 
-	if (getuid() != 0) {
+	if (geteuid() != 0) {
 		fprintf(stderr, "Only root can run this application.\n");
 		return STATUS_NOT_A_PRIVILEGED_USER;
 	}

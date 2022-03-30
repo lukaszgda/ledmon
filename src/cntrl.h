@@ -1,6 +1,6 @@
 /*
  * Intel(R) Enclosure LED Utilities
- * Copyright (C) 2009-2018 Intel Corporation.
+ * Copyright (C) 2009-2020 Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -20,6 +20,8 @@
 #ifndef _CNTRL_H_INCLUDED_
 #define _CNTRL_H_INCLUDED_
 
+#include <limits.h>
+
 /**
  * This enumeration type lists all supported storage controller types.
  */
@@ -29,7 +31,8 @@ enum cntrl_type {
 	CNTRL_TYPE_VMD,
 	CNTRL_TYPE_SCSI,
 	CNTRL_TYPE_AHCI,
-	CNTRL_TYPE_AMD_SGPIO
+	CNTRL_TYPE_NPEM,
+	CNTRL_TYPE_AMD,
 };
 
 /**
@@ -41,7 +44,7 @@ struct cntrl_device {
 	/**
 	* Path to the device in sysfs tree.
 	*/
-	char *sysfs_path;
+	char sysfs_path[PATH_MAX];
 
 	/**
 	 * Type of storage controller device.

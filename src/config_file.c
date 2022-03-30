@@ -1,7 +1,7 @@
 /*
  * Intel(R) Enclosure LED Utilities
  *
- * Copyright (C) 2017-2019 Intel Corporation.
+ * Copyright (C) 2017-2021 Intel Corporation.
  * Copyright (C) 2009 Karel Zak <kzak@redhat.com>
  *
  * SPDX-License-Identifier: GPL-2.0
@@ -143,8 +143,8 @@ static int parse_next(FILE *fd)
 	if (!strncmp(s, "INTERVAL=", 9)) {
 		s += 9;
 		if (*s) {
-			if (sscanf(s, "%d", &conf.scan_interval) != 1 ||
-			    conf.scan_interval < LEDMON_MIN_SLEEP_INTERVAL)
+			if (str_toi(&conf.scan_interval, s, NULL, 10) != 0 ||
+				conf.scan_interval < LEDMON_MIN_SLEEP_INTERVAL)
 				conf.scan_interval = LEDMON_MIN_SLEEP_INTERVAL;
 		}
 	} else if (!strncmp(s, "LOG_LEVEL=", 10)) {
@@ -240,11 +240,8 @@ static char *conf_list_to_str(struct list *list)
 
 	memset(buf, 0, sizeof(buf));
 	list_for_each(list, elem) {
-		if (elem) {
-			int curr = strlen(buf);
-
-			snprintf(buf + curr, sizeof(buf) - curr, "%s,", elem);
-		}
+		int curr = strlen(buf);
+		snprintf(buf + curr, sizeof(buf) - curr, "%s,", elem);
 	}
 
 	return str_dup(buf);
@@ -311,49 +308,3 @@ int ledmon_remove_shared_conf(void)
 	return shm_unlink(LEDMON_SHARE_MEM_FILE);
 }
 
-#ifdef _TEST_CONFIG
-/*
- * usage: ledmon_conf_test [<filename>]
- */
-
-int main(int argc, char *argv[])
-{
-	char *filename = NULL;
-	char *s;
-
-	if (argc == 2)
-		filename = argv[1];
-
-	if (ledmon_read_config(filename) != STATUS_SUCCESS)
-		return EXIT_FAILURE;
-
-	printf("INTERVAL: %d\n", conf.scan_interval);
-	printf("LOG_LEVEL: %d\n", conf.log_level);
-	printf("LOG_PATH: %s\n", conf.log_path);
-	printf("BLINK_ON_MIGR: %d\n", conf.blink_on_migration);
-	printf("BLINK_ON_INIT: %d\n", conf.blink_on_init);
-	printf("REBUILD_BLINK_ON_ALL: %d\n", conf.rebuild_blink_on_all);
-	printf("RAID_MEMBERS_ONLY: %d\n", conf.raid_members_only);
-
-	if (list_is_empty(&conf.cntrls_whitelist))
-		printf("WHITELIST: NONE\n");
-	else {
-		printf("WHITELIST: ");
-		list_for_each(&conf.cntrls_whitelist, s)
-			printf("%s, ", s);
-		printf("\n");
-	}
-
-	if (list_is_empty(&conf.cntrls_blacklist))
-		printf("BLACKLIST: NONE\n");
-	else {
-		printf("BLACKLIST: ");
-		list_for_each(&conf.cntrls_blacklist, s)
-			printf("%s, ", s);
-		printf("\n");
-	}
-
-	ledmon_free_config();
-	return EXIT_SUCCESS;
-}
-#endif

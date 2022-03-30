@@ -1,6 +1,6 @@
 #
 #  Intel(R) Enclosure LED Utilities
-#  Copyright (C) 2009-2019 Intel Corporation.
+#  Copyright (C) 2009-2021 Intel Corporation.
 #
 #  This program is free software; you can redistribute it and/or modify it
 #  under the terms and conditions of the GNU General Public License,
@@ -22,4 +22,4 @@ endif
 
 SUBDIRS = doc src $(OPTIONAL_SUBDIR)
 EXTRA_DIST = config/config.h systemd/ledmon.service.in
-dist_doc_DATA = README
+dist_doc_DATA = README.md

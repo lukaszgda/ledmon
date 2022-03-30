@@ -1,3 +1,42 @@
+### v0.95 / 2021-01-15
+
+[Commit list](https://github.com/intel/ledmon/compare/v0.94...v0.95)
+
+Enhancements
+
+* Allow to run ledctl version without root
+* README update with the compilation steps
+
+Bug fixes
+
+* Documentation updates
+* Defaulting to SGPIO for AMD systems
+* Don't rely on states priority while changing IBPI states
+* Check the white/blacklist from ledmon.conf earlier in discovery
+* Change installation directory to /usr/sbin
+* Use package version from autotools, not version.h
+* Fix memory leak in utils.c
+* Bugfixes and refactoring in SES module
+* Fixed issues reported by static analysis
+* Build system fixes
+* Other minor fixes
+
+### v0.94 / 2020-02-04
+
+[Commit list](https://github.com/intel/ledmon/compare/v0.93...v0.94)
+
+Enhancements
+
+* Support for AMD IPMI enclosure management
+* Support for NPEM
+
+Bug fixes
+
+* Documentation updates
+* Fix activity indicator state for SMP
+* Fix for GCC 9 compilation
+* Update ipbi pattern for drives with previous pattern unknown
+
 ### v0.93 / 2019-10-17
 
 [Commit list](https://github.com/intel/ledmon/compare/v0.92...v0.93)

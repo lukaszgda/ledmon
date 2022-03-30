@@ -1,6 +1,6 @@
 /*
  * Intel(R) Enclosure LED Utilities
- * Copyright (C) 2009-2019 Intel Corporation.
+ * Copyright (C) 2009-2021 Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -17,6 +17,7 @@
  *
  */
 
+#include <config_ac.h>
 #include <ctype.h>
 #include <errno.h>
 #include <getopt.h>
@@ -47,7 +48,6 @@
 #include "status.h"
 #include "sysfs.h"
 #include "utils.h"
-#include "version.h"
 
 /**
  * @brief An IBPI state structure.
@@ -95,8 +95,8 @@ const char *ibpi_str[] = {
  * Internal variable of ledctl utility. It is the pattern used to print out
  * information about the version of ledctl utility.
  */
-static char *ledctl_version = "Intel(R) Enclosure LED Control Application %d.%d %s\n"
-			      "Copyright (C) 2009-2019 Intel Corporation.\n";
+static char *ledctl_version = "Intel(R) Enclosure LED Control Application %s %s\n"
+			      "Copyright (C) 2009-2021 Intel Corporation.\n";
 
 /**
  * Internal variable of monitor service. It is used to help parse command line
@@ -163,7 +163,7 @@ static void _ledctl_fini(int status __attribute__ ((unused)),
  */
 static void _ledctl_version(void)
 {
-	printf(ledctl_version, VERSION_MAJOR, VERSION_MINOR, BUILD_LABEL);
+	printf(ledctl_version, PACKAGE_VERSION, BUILD_LABEL);
 	printf("\nThis is free software; see the source for copying conditions." \
 	       " There is NO warranty;\nnot even for MERCHANTABILITY or FITNESS" \
 	       " FOR A PARTICULAR PURPOSE.\n\n");
@@ -181,7 +181,7 @@ static void _ledctl_version(void)
  */
 static void _ledctl_help(void)
 {
-	printf(ledctl_version, VERSION_MAJOR, VERSION_MINOR, BUILD_LABEL);
+	printf(ledctl_version, PACKAGE_VERSION, BUILD_LABEL);
 	printf("\nUsage: %s [OPTIONS] pattern=list_of_devices ...\n\n",
 	       progname);
 	printf("Mandatory arguments for long options are mandatory for short options, too.\n\n");
@@ -261,7 +261,7 @@ static void _determine(struct ibpi_state *state)
 		struct block_device *block;
 
 		list_for_each(&state->block_list, block) {
-			if (block->ibpi < state->ibpi)
+			if (block->ibpi != state->ibpi)
 				block->ibpi = state->ibpi;
 		}
 	} else {
@@ -426,7 +426,7 @@ static struct block_device *_block_device_search(const struct list *block_list,
  *
  * @param[in]      state          pointer to IBPI state structure the block
  *                                device will be added to.
- * @param[in]      block          pointer to block device structure.
+ * @param[in]      name           path to block device.
  *
  * @return The function does not return a value.
  */
@@ -441,7 +441,7 @@ static status_t _ibpi_state_add_block(struct ibpi_state *state, char *name)
 	if (strstr(temp, "/dev/") != NULL) {
 		if (stat(temp, &st) < 0)
 			return STATUS_STAT_ERROR;
-		sprintf(temp, "/sys/dev/block/%u:%u", major(st.st_rdev),
+		snprintf(temp, PATH_MAX, "/sys/dev/block/%u:%u", major(st.st_rdev),
 			minor(st.st_rdev));
 		if ((realpath(temp, path) == NULL) && (errno != ENOTDIR))
 			return STATUS_INVALID_PATH;
@@ -521,6 +521,41 @@ static status_t _cmdline_ibpi_parse(int argc, char *argv[])
 }
 
 /**
+ * @brief Command line parser - checks if command line input contains
+ * options which don't require to run ledctl as root.
+ *
+ * The function parses options of ledctl application.
+ * It handles option to print version and help.
+ *
+ * @param[in]      argc           number of elements in argv array.
+ * @param[in]      argv           command line arguments.
+ *
+ * @return STATUS_SUCCESS if successful, otherwise a valid status_t status code.
+ */
+static status_t _cmdline_parse_non_root(int argc, char *argv[])
+{
+	int opt_index, opt = -1;
+	status_t status = STATUS_SUCCESS;
+
+	do {
+		opt = getopt_long(argc, argv, shortopt, longopt, &opt_index);
+		switch (opt) {
+		case 'v':
+			_ledctl_version();
+			exit(EXIT_SUCCESS);
+		case 'h':
+			_ledctl_help();
+			exit(EXIT_SUCCESS);
+		case ':':
+		case '?':
+			return STATUS_CMDLINE_ERROR;
+		}
+	} while (opt >= 0);
+
+	return status;
+}
+
+/**
  * @brief Command line parser - options.
  *
  * This is internal function of ledctl utility. The function parses options of
@@ -536,6 +571,8 @@ static status_t _cmdline_parse(int argc, char *argv[])
 {
 	int opt, opt_index = -1;
 	status_t status = STATUS_SUCCESS;
+
+	optind = 1;
 
 	do {
 		opt = getopt_long(argc, argv, shortopt, longopt, &opt_index);
@@ -559,12 +596,6 @@ static status_t _cmdline_parse(int argc, char *argv[])
 
 			}
 			break;
-		case 'v':
-			_ledctl_version();
-			exit(EXIT_SUCCESS);
-		case 'h':
-			_ledctl_help();
-			exit(EXIT_SUCCESS);
 		case 'l':
 			status = set_log_path(optarg);
 			break;
@@ -598,18 +629,17 @@ static status_t _cmdline_parse(int argc, char *argv[])
 }
 
 /**
- * @brief Determine and send IBPI pattern.
+ * @brief Send IBPI pattern.
  *
- * This is internal function of ledctl utility. The function determines a state
- * of block device based on ibpi_list list. Then it sends a LED control message
- * to controller to visualize the pattern.
+ * This is internal function of ledctl utility. The function set a requested
+ * ibpi_state for devices linked with this ibpi_state on ibpi_local_list.
+ * For other devices IBPI_PATTERN_LOCATE_OFF might be set - depending on
+ * listed_only parameter. Then it sends a LED control message to controller
+ * to visualize the pattern.
  *
- * @param[in]      sysfs          pointer to sysfs structure holding information
- *                                about the existing controllers, block devices,
- *                                and software RAID devices.
- * @param[in]      ibpi_local_list  TBD
+ * @param[in]      ibpi_local_list	    pointer to list of ipbi_state.
  *
- * @return STATUS_SUCCESS if successful, otherwise a valid status_t status code.
+ * @return STATUS_SUCCESS if successful, otherwise STATUS_IBPI_DETERMINE_ERROR
  */
 static status_t _ledctl_execute(struct list *ibpi_local_list)
 {
@@ -622,8 +652,15 @@ static status_t _ledctl_execute(struct list *ibpi_local_list)
 	}
 
 	list_for_each(ibpi_local_list, state)
-		list_for_each(&state->block_list, device)
+		list_for_each(&state->block_list, device) {
+			if (state->ibpi != device->ibpi) {
+				log_debug("Mismatch detected for %s, ibpi state: %s, device state %s\n",
+					  device->sysfs_path, state->ibpi,
+					  device->ibpi);
+				return STATUS_IBPI_DETERMINE_ERROR;
+			}
 			device->send_fn(device, device->ibpi);
+		}
 
 	list_for_each(sysfs_get_block_devices(), device)
 		device->flush_fn(device);
@@ -679,9 +716,13 @@ int main(int argc, char *argv[])
 	setup_options(&longopt, &shortopt, possible_params,
 			possible_params_size);
 	set_invocation_name(argv[0]);
+
+	if (_cmdline_parse_non_root(argc, argv) != STATUS_SUCCESS)
+		return STATUS_CMDLINE_ERROR;
+
 	openlog(progname, LOG_PERROR, LOG_USER);
 
-	if (getuid() != 0) {
+	if (geteuid() != 0) {
 		fprintf(stderr, "Only root can run this application.\n");
 		return STATUS_NOT_A_PRIVILEGED_USER;
 	}

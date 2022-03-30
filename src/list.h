@@ -48,7 +48,7 @@ struct list {
 
 #define __list_for_each(__list, __item, __start_fn, __iter_fn) \
 	for (struct node *__node = __start_fn(__list); \
-	     __node && ((__item = __node->item) || (!__node->item)); \
+	     __node && ((__item = __node->item) || (!__item)); \
 	     __node = __iter_fn(__node))
 
 #define list_for_each(__list, __item) \

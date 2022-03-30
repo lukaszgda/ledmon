@@ -1,6 +1,6 @@
 /*
  * Intel(R) Enclosure LED Utilities
- * Copyright (C) 2009-2019 Intel Corporation.
+ * Copyright (C) 2009-2021 Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -18,10 +18,12 @@
  */
 
 #include <dirent.h>
+#include <fcntl.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #if _HAVE_DMALLOC_H
@@ -108,18 +110,43 @@ static char *_get_dev_sg(const char *encl_path)
  */
 struct enclosure_device *enclosure_device_init(const char *path)
 {
-	char temp[PATH_MAX];
-	struct enclosure_device *result = NULL;
+	char temp[PATH_MAX] = "\0";
+	struct enclosure_device *enclosure;
+	int ret;
+	int fd;
 
-	if (realpath(path, temp)) {
-		result = calloc(1, sizeof(struct enclosure_device));
-		if (result == NULL)
-			return NULL;
-		result->sysfs_path = str_dup(temp);
-		result->sas_address = _get_sas_address(temp);
-		result->dev_path = _get_dev_sg(temp);
+	if (!realpath(path, temp))
+		return NULL;
+
+	enclosure = calloc(1, sizeof(struct enclosure_device));
+	if (enclosure == NULL) {
+		ret = 1;
+		goto out;
 	}
-	return result;
+
+	memccpy(enclosure->sysfs_path, temp, '\0', PATH_MAX - 1);
+	enclosure->sas_address = _get_sas_address(temp);
+	enclosure->dev_path = _get_dev_sg(temp);
+
+	fd = enclosure_open(enclosure);
+	if (fd == -1) {
+		ret = 1;
+		goto out;
+	}
+
+	ret = ses_load_pages(fd, &enclosure->ses_pages);
+	close(fd);
+	if (ret)
+		goto out;
+
+	ret = ses_get_slots(&enclosure->ses_pages, &enclosure->slots, &enclosure->slots_count);
+out:
+	if (ret) {
+		log_warning("failed to initialize enclosure_device %s\n", path);
+		enclosure_device_fini(enclosure);
+		enclosure = NULL;
+	}
+	return enclosure;
 }
 
 /*
@@ -129,8 +156,18 @@ struct enclosure_device *enclosure_device_init(const char *path)
 void enclosure_device_fini(struct enclosure_device *enclosure)
 {
 	if (enclosure) {
-		free(enclosure->sysfs_path);
+		free(enclosure->slots);
 		free(enclosure->dev_path);
 		free(enclosure);
 	}
+}
+
+int enclosure_open(const struct enclosure_device *enclosure)
+{
+	int fd = -1;
+
+	if (enclosure->dev_path)
+		fd = open(enclosure->dev_path, O_RDWR);
+
+	return fd;
 }
