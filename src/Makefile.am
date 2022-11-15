@@ -1,6 +1,6 @@
 #
 #  Intel(R) Enclosure LED Utilities
-#  Copyright (C) 2009-2021 Intel Corporation.
+#  Copyright (C) 2009-2022 Intel Corporation.
 #
 #  This program is free software; you can redistribute it and/or modify it
 #  under the terms and conditions of the GNU General Public License,
@@ -17,7 +17,7 @@
 #
 
 COMMON_SRCS      = ahci.c block.c cntrl.c config_file.c enclosure.c list.c \
-                   raid.c scsi.c slave.c status.c sysfs.c smp.c dellssd.c \
+                   raid.c scsi.c slave.c sysfs.c smp.c dellssd.c \
                    utils.c pci_slot.c vmdssd.c udev.c amd.c amd_sgpio.c amd_ipmi.c\
                    ipmi.c npem.c ses.c \
                    ahci.h amd_sgpio.h block.h cntrl.h config_file.h dellssd.h \
@@ -26,7 +26,7 @@ COMMON_SRCS      = ahci.c block.c cntrl.c config_file.c enclosure.c list.c \
                    vmdssd.h ipmi.h amd.h amd_ipmi.h npem.h
 
 LEDMON_SRCS      = ledmon.c pidfile.c $(COMMON_SRCS)
-LEDCTL_SRCS      = ledctl.c $(COMMON_SRCS)
+LEDCTL_SRCS      = ledctl.c slot.h $(COMMON_SRCS)
 
 
 sbin_PROGRAMS  = ledmon ledctl
