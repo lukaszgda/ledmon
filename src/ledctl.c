@@ -21,7 +21,10 @@
 #include <ctype.h>
 #include <errno.h>
 #include <getopt.h>
+#include <linux/limits.h>
+#include <inttypes.h>
 #include <limits.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -48,6 +51,7 @@
 #include "pci_slot.h"
 #include "scsi.h"
 #include "sysfs.h"
+#include "enclosure.h"
 
 typedef enum {
 	LEDCTL_STATUS_SUCCESS=0,
@@ -231,19 +235,8 @@ static int possible_params[] = {
 	OPT_LOG_LEVEL,
 };
 
-static const int possible_params_size = sizeof(possible_params)
-		/ sizeof(possible_params[0]);
-
+static const int possible_params_size = ARRAY_SIZE(possible_params);
 static int listed_only;
-
-enum cntrl_type get_cntrl_type(const char *cntrl)
-{
-	if (strcasecmp(cntrl, "vmd") == 0)
-		return CNTRL_TYPE_VMD;
-	else if (strcasecmp(cntrl, "npem") == 0)
-		return CNTRL_TYPE_NPEM;
-	return CNTRL_TYPE_UNKNOWN;
-}
 
 /**
  * @brief Determines a slot functions based on controller.
@@ -266,6 +259,10 @@ static void _get_slot_ctrl_fn(enum cntrl_type ctrl_type, struct slot_request *sl
 	case CNTRL_TYPE_NPEM:
 		slot_req->get_slot_fn = npem_get_slot;
 		slot_req->set_slot_fn = npem_set_slot;
+		break;
+	case CNTRL_TYPE_SCSI:
+		slot_req->get_slot_fn = enclosure_get_slot;
+		slot_req->set_slot_fn = enclosure_set_slot;
 		break;
 	default:
 		log_debug("Slot functions could not be set because the controller type %s does not "
@@ -759,7 +756,7 @@ static ledctl_status_code_t slot_verify_request(struct slot_request *slot_req)
 	}
 	if (!slot_req->get_slot_fn && !slot_req->set_slot_fn) {
 		log_error("The controller type %s doesn't support slot functionality.",
-			  slot_req->cntrl);
+			cntrl_type_to_string(slot_req->cntrl));
 		return LEDCTL_STATUS_INVALID_CONTROLLER;
 	}
 	if (slot_req->device[0] && slot_req->slot[0]) {
@@ -817,6 +814,18 @@ static ledctl_status_code_t list_slots(struct slot_request *slot_req)
 		}
 		return status;
 	}
+	case CNTRL_TYPE_SCSI:
+	{
+		struct enclosure_device *encl = NULL;
+		char slot_id[PATH_MAX];
+		list_for_each(sysfs_get_enclosure_devices(), encl) {
+			for (int i = 0; i < encl->slots_count; i++) {
+				snprintf(slot_id, PATH_MAX, "%s/%d", encl->dev_path, encl->slots[i].index);
+				status = get_state_for_slot(slot_id, slot_req);
+			}
+		}
+		return status;
+	}
 	default:
 		return LEDCTL_STATUS_NOT_SUPPORTED;
 	}
@@ -841,13 +850,13 @@ ledctl_status_code_t slot_execute(struct slot_request *slot_req)
 		return list_slots(slot_req);
 	case OPT_SET_SLOT:
 		status = slot_req->get_slot_fn(slot_req->device, slot_req->slot, &slot_res);
+		if (status != LEDCTL_STATUS_SUCCESS)
+			return status;
 		if (slot_res.state == slot_req->state) {
 			log_warning("Led state: %s is already set for the slot.",
 				    ibpi2str(slot_req->state));
 			return LEDCTL_STATUS_SUCCESS;
 		}
-		if (status != LEDCTL_STATUS_SUCCESS)
-			return status;
 		status = slot_req->set_slot_fn(slot_res.slot, slot_req->state);
 		if (status != LEDCTL_STATUS_SUCCESS)
 			return status;
@@ -930,7 +939,7 @@ ledctl_status_code_t _cmdline_parse(int argc, char *argv[], struct slot_request 
 			req->chosen_opt = OPT_SET_SLOT;
 			break;
 		case 'c':
-			req->cntrl = get_cntrl_type(optarg);
+			req->cntrl = string_to_cntrl_type(optarg);
 			_get_slot_ctrl_fn(req->cntrl, req);
 			break;
 		case 's':
@@ -1015,13 +1024,30 @@ static ledctl_status_code_t _read_shared_conf(void)
 	return status;
 }
 
+/**
+ * @brief Unset unsupported config parameters.
+ *
+ * For ledctl only LOG_LEVEL and LOG_PATH are supported and desired.
+ * Unset other options.
+ */
+static void _unset_unused_options(void)
+{
+	conf.blink_on_init = false;
+	conf.blink_on_migration = false;
+	list_erase(&conf.cntrls_excludelist);
+	list_erase(&conf.cntrls_allowlist);
+	conf.raid_members_only = false;
+	conf.rebuild_blink_on_all = false;
+	conf.scan_interval = 0;
+}
+
 static ledctl_status_code_t _init_ledctl_conf(void)
 {
 	memset(&conf, 0, sizeof(struct ledmon_conf));
 	/* initialize with default values */
 	conf.log_level = LOG_LEVEL_WARNING;
-	list_init(&conf.cntrls_whitelist, NULL);
-	list_init(&conf.cntrls_blacklist, NULL);
+	list_init(&conf.cntrls_allowlist, NULL);
+	list_init(&conf.cntrls_excludelist, NULL);
 
 	return set_log_path(LEDCTL_DEF_LOG_FILE);
 }
@@ -1089,6 +1115,8 @@ int main(int argc, char *argv[])
 	status = _read_shared_conf();
 	if (status != LEDCTL_STATUS_SUCCESS)
 		return status;
+	_unset_unused_options();
+
 	status = log_open(conf.log_path);
 	if (status != LEDCTL_STATUS_SUCCESS)
 		return LEDCTL_STATUS_LOG_FILE_ERROR;

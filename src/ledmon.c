@@ -144,8 +144,7 @@ static int possible_params[] = {
 	OPT_FOREGROUND,
 };
 
-static int possible_params_size = sizeof(possible_params)
-		/ sizeof(possible_params[0]);
+static int possible_params_size = ARRAY_SIZE(possible_params);
 
 /**
  * @brief Monitor service finalize function.
@@ -861,8 +860,8 @@ static ledmon_status_code_t _init_ledmon_conf(void)
 	conf.raid_members_only = 0;
 	conf.log_level = LOG_LEVEL_WARNING;
 	conf.scan_interval = LEDMON_DEF_SLEEP_INTERVAL;
-	list_init(&conf.cntrls_whitelist, NULL);
-	list_init(&conf.cntrls_blacklist, NULL);
+	list_init(&conf.cntrls_allowlist, NULL);
+	list_init(&conf.cntrls_excludelist, NULL);
 	return set_log_path(LEDMON_DEF_LOG_FILE);
 }
 
@@ -891,7 +890,7 @@ static void _close_parent_fds(void)
 int main(int argc, char *argv[])
 {
 	ledmon_status_code_t status = LEDMON_STATUS_SUCCESS;
-	int ignore = 0;
+	static int ignore;
 
 	setup_options(&longopt, &shortopt, possible_params,
 			possible_params_size);
