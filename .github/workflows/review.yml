@@ -17,7 +17,7 @@ jobs:
     name: Compilation test with gcc
     strategy:
       matrix:
-        gcc-version: [7, 8, 9, 10, 11, 12]
+        gcc-version: [7, 8, 9, 10, 11, 12, 13]
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
@@ -26,8 +26,10 @@ jobs:
     - name: 'Install gcc'
       run: sudo apt-get update && sudo apt-get install gcc-${{ matrix.gcc-version }} g++-${{ matrix.gcc-version }}
     - name: 'Install dependencies'
-      run: sudo apt-get install pkg-config automake autoconf make libsgutils2-dev libudev-dev libpci-dev
+      run: sudo apt-get install pkg-config automake autoconf autoconf-archive make libsgutils2-dev libudev-dev libpci-dev check
     - name: 'Generate compiling configurations'
-      run: ./autogen.sh && ./configure
+      run: ./autogen.sh && ./configure --enable-test --enable-library
     - name: 'Make'
-      run: CC=gcc-${{ matrix.gcc-version }} CXX=g++-${{ matrix.gcc-version }} && make -j$(nproc)
+      run: CC=gcc-${{ matrix.gcc-version }} CXX=g++-${{ matrix.gcc-version }} && V=1 make -j$(nproc)
+    - name: 'Check public symbol visibility'
+      run: tests/check_symbol_visibility.sh
