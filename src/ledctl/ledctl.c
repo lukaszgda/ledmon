@@ -1,6 +1,6 @@
 /*
  * Intel(R) Enclosure LED Utilities
- * Copyright (C) 2009-2023 Intel Corporation.
+ * Copyright (C) 2009-2024 Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -48,6 +48,32 @@
 #include <led/libled.h>
 #include "libled_internal.h"
 #include "slot.h"
+#include "help.h"
+
+#ifdef ENABLE_TEST
+#define COMMON_GETOPT_ARGS	\
+	OPT_ALL,		\
+	OPT_DEBUG,		\
+	OPT_ERROR,		\
+	OPT_INFO,		\
+	OPT_QUIET,		\
+	OPT_WARNING,		\
+	OPT_LOG,		\
+	OPT_LOG_LEVEL,		\
+	OPT_HELP,		\
+	OPT_TEST
+#else
+#define COMMON_GETOPT_ARGS	\
+	OPT_ALL,		\
+	OPT_DEBUG,		\
+	OPT_ERROR,		\
+	OPT_INFO,		\
+	OPT_QUIET,		\
+	OPT_WARNING,		\
+	OPT_LOG,		\
+	OPT_LOG_LEVEL,		\
+	OPT_HELP
+#endif
 
 struct map ledctl_status_map[] = {
 	{ "STATUS_SUCCESSS", LED_STATUS_SUCCESS },
@@ -97,12 +123,19 @@ struct ibpi_state {
  */
 static struct list ibpi_list;
 
+enum print_param {
+	PRINT_ALL,
+	PRINT_STATE,
+	PRINT_SLOT,
+	PRINT_DEVICE
+};
+
 /**
  * @brief slot request parameters
  *
- * This structure contains all possible parameters for slot related commands.
+ * This structure contains all possible parameters for related commands.
  */
-struct slot_request {
+struct request {
 	/**
 	 * Option given in the request.
 	 */
@@ -127,51 +160,60 @@ struct slot_request {
 	 * IBPI state.
 	 */
 	enum led_ibpi_pattern state;
+
+	/**
+	 * Slot parameter to be printed on output.
+	 */
+	enum print_param to_print;
 };
-
-/**
- * Internal variable of ledctl utility. It is the pattern used to print out
- * information about the version of ledctl utility.
- */
-static char *ledctl_version = "Intel(R) Enclosure LED Control Application %s %s\n"
-			      "Copyright (C) 2009-2023 Intel Corporation.\n";
-
-/**
- * Internal variable of monitor service. It is used to help parse command line
- * short options.
- */
-static char *shortopt;
-
-struct option *longopt;
 
 static struct led_ctx *ctx;
 
 struct ledmon_conf conf;
 
-static int possible_params[] = {
+static int possible_params_modes[] = {
 	OPT_HELP,
-	OPT_LOG,
 	OPT_VERSION,
-	OPT_LIST_CTRL,
-	OPT_LISTED_ONLY,
-	OPT_LIST_SLOTS,
 	OPT_GET_SLOT,
 	OPT_SET_SLOT,
+	OPT_LIST_SLOTS,
+	OPT_LIST_CTRL,
+	OPT_IBPI
+};
+
+static int possible_params_list_ctrl[] = {
+	COMMON_GETOPT_ARGS
+};
+
+static int possible_params_set_slot[] = {
 	OPT_CNTRL_TYPE,
 	OPT_DEVICE,
 	OPT_SLOT,
 	OPT_STATE,
-	OPT_ALL,
-	OPT_DEBUG,
-	OPT_ERROR,
-	OPT_INFO,
-	OPT_QUIET,
-	OPT_WARNING,
-	OPT_LOG_LEVEL,
+	COMMON_GETOPT_ARGS
 };
 
-static const int possible_params_size = ARRAY_SIZE(possible_params);
+static int possible_params_get_slot[] = {
+	OPT_CNTRL_TYPE,
+	OPT_DEVICE,
+	OPT_SLOT,
+	OPT_PRINT_PARAM,
+	COMMON_GETOPT_ARGS
+};
+
+static int possible_params_list_slots[] = {
+	OPT_CNTRL_TYPE,
+	COMMON_GETOPT_ARGS
+};
+
+static int possible_params_ibpi[] = {
+	OPT_LISTED_ONLY,
+	COMMON_GETOPT_ARGS
+};
+
 static int listed_only;
+
+static bool test_params;
 
 static void ibpi_state_fini(struct ibpi_state *p)
 {
@@ -188,85 +230,11 @@ static void ibpi_state_fini(struct ibpi_state *p)
  *
  * @return The function does not return a value.
  */
-static void _ledctl_fini(int _i, void *_arg)
+static void _ledctl_fini(void)
 {
 	led_free(ctx);
 	list_erase(&ibpi_list);
 	log_close(&conf);
-}
-
-/**
- * @brief Displays the credits.
- *
- * This is internal function of ledctl utility. It prints out the name and
- * version of the program. It displays the copyright notice and information
- * about the author and license, too.
- *
- * @return The function does not return a value.
- */
-static void _ledctl_version(void)
-{
-	printf(ledctl_version, PACKAGE_VERSION, BUILD_LABEL);
-	printf("\nThis is free software; see the source for copying conditions." \
-	       " There is NO warranty;\nnot even for MERCHANTABILITY or FITNESS" \
-	       " FOR A PARTICULAR PURPOSE.\n\n");
-}
-
-/**
- * @brief Displays the help.
- *
- * This is internal function of ledctl utility. The function prints the name
- * and version of the program out. It displays the usage and available options
- * and its arguments (if any). Each option is described. This is an extract
- * from user manual page.
- *
- * @return The function does not return a value.
- */
-static void _ledctl_help(void)
-{
-	printf(ledctl_version, PACKAGE_VERSION, BUILD_LABEL);
-	printf("\nUsage: %s [OPTIONS] pattern=list_of_devices ...\n\n",
-	       progname);
-	printf("Mandatory arguments for long options are mandatory for short options, too.\n\n");
-	print_opt("--listed-only", "-x",
-		  "Ledctl will change state only for given devices.");
-	print_opt("--list-controllers", "-L",
-		  "Displays list of controllers detected by ledmon.");
-	print_opt("--list-slots --controller-type CONTROLLER", "-P -c CONTROLLER",
-		  "List slots under the controller type, their led states, slot numbers and "
-		  "devnodes connected.");
-	print_opt("--get-slot --controller-type CONTROLLER --device DEVNODE / --slot SLOT",
-		  "-G -c CONTROLLER -d DEVNODE / -p SLOT",
-		  "Prints slot information, its led state, slot number and devnode.");
-	print_opt("--set-slot --controller-type CONTROLLER --slot SLOT --state STATE",
-		  "-S -c CONTROLLER -p SLOT -s STATE", "Sets given state for chosen slot "
-		  "under the controller.");
-	print_opt("--log=PATH", "-l PATH",
-		  "Use local log file instead /var/log/ledctl.log.");
-	print_opt("--help", "-h", "Displays this help text.");
-	print_opt("--version", "-v",
-		  "Displays version and license information.");
-	print_opt("--log-level=VALUE", "-l VALUE",
-		  "Allows user to set ledctl verbose level in logs.");
-	printf("\nPatterns:\n"
-	       "\tCommon patterns are:\n"
-	       "\t\tlocate, locate_off, normal, off, degraded, rebuild,\n"
-	       "\t\tfailed_array, hotspare, pfa, failure, disk_failed,\n"
-	       "\t\tlocate_and_failure\n"
-	       "\tSES-2 only patterns:\n"
-	       "\t\tses_abort, ses_rebuild, ses_ifa, ses_ica, ses_cons_check,\n"
-	       "\t\tses_hotspare, ses_rsvd_dev, ses_ok, ses_ident, ses_rm,\n"
-	       "\t\tses_insert, ses_missing, ses_dnr, ses_active, ses_prdfail,\n"
-	       "\t\tses_enable_bb, ses_enable_ba, ses_devoff, ses_fault\n"
-	       "\tAutomatic translation form IBPI into SES-2:\n"
-	       "\t\tlocate=ses_ident, locate_off=~ses_ident,\n"
-	       "\t\tnormal=ses_ok, off=ses_ok, degraded=ses_ica,\n"
-	       "\t\trebuild=ses_rebuild, failed_array=ses_ifa,\n"
-	       "\t\thotspare=ses_hotspare, pfa=ses_prdfail, failure=ses_fault,\n"
-	       "\t\tdisk_failed=ses_fault\n");
-	printf("Refer to ledctl(8) man page for more detailed description.\n");
-	printf("Bugs should be reported at: " \
-		"https://github.com/intel/ledmon/issues\n");
 }
 
 /**
@@ -331,75 +299,12 @@ static struct ibpi_state *_ibpi_find(const struct list *ibpi_local_list,
  */
 static struct ibpi_state *_ibpi_state_get(const char *name)
 {
+	enum led_ibpi_pattern ibpi = string2ibpi(name);
 	struct ibpi_state *state = NULL;
-	enum led_ibpi_pattern ibpi;
 
-	if (strcmp(name, "locate") == 0) {
-		ibpi = LED_IBPI_PATTERN_LOCATE;
-	} else if (strcmp(name, "locate_off") == 0) {
-		ibpi = LED_IBPI_PATTERN_LOCATE_OFF;
-	} else if (strcmp(name, "normal") == 0) {
-		ibpi = LED_IBPI_PATTERN_NORMAL;
-	} else if (strcmp(name, "off") == 0) {
-		ibpi = LED_IBPI_PATTERN_NORMAL;
-	} else if ((strcmp(name, "ica") == 0) ||
-		   (strcmp(name, "degraded") == 0)) {
-		ibpi = LED_IBPI_PATTERN_DEGRADED;
-	} else if (strcmp(name, "rebuild") == 0) {
-		ibpi = LED_IBPI_PATTERN_REBUILD;
-	} else if ((strcmp(name, "ifa") == 0) ||
-		   (strcmp(name, "failed_array") == 0)) {
-		ibpi = LED_IBPI_PATTERN_FAILED_ARRAY;
-	} else if (strcmp(name, "hotspare") == 0) {
-		ibpi = LED_IBPI_PATTERN_HOTSPARE;
-	} else if (strcmp(name, "pfa") == 0) {
-		ibpi = LED_IBPI_PATTERN_PFA;
-	} else if ((strcmp(name, "failure") == 0) ||
-		   (strcmp(name, "disk_failed") == 0)) {
-		ibpi = LED_IBPI_PATTERN_FAILED_DRIVE;
-	} else if (strcmp(name, "locate_and_failure") == 0) {
-		ibpi = LED_IBPI_PATTERN_LOCATE_AND_FAILED_DRIVE;
-	} else if (strcmp(name, "ses_abort") == 0) {
-		ibpi = LED_SES_REQ_ABORT;
-	} else if (strcmp(name, "ses_rebuild") == 0) {
-		ibpi = LED_SES_REQ_REBUILD;
-	} else if (strcmp(name, "ses_ifa") == 0) {
-		ibpi = LED_SES_REQ_IFA;
-	} else if (strcmp(name, "ses_ica") == 0) {
-		ibpi = LED_SES_REQ_ICA;
-	} else if (strcmp(name, "ses_cons_check") == 0) {
-		ibpi = LED_SES_REQ_CONS_CHECK;
-	} else if (strcmp(name, "ses_hotspare") == 0) {
-		ibpi = LED_SES_REQ_HOTSPARE;
-	} else if (strcmp(name, "ses_rsvd_dev") == 0) {
-		ibpi = LED_SES_REQ_RSVD_DEV;
-	} else if (strcmp(name, "ses_ok") == 0) {
-		ibpi = LED_SES_REQ_OK;
-	} else if (strcmp(name, "ses_ident") == 0) {
-		ibpi = LED_SES_REQ_IDENT;
-	} else if (strcmp(name, "ses_rm") == 0) {
-		ibpi = LED_SES_REQ_RM;
-	} else if (strcmp(name, "ses_insert") == 0) {
-		ibpi = LED_SES_REQ_INS;
-	} else if (strcmp(name, "ses_missing") == 0) {
-		ibpi = LED_SES_REQ_MISSING;
-	} else if (strcmp(name, "ses_dnr") == 0) {
-		ibpi = LED_SES_REQ_DNR;
-	} else if (strcmp(name, "ses_active") == 0) {
-		ibpi = LED_SES_REQ_ACTIVE;
-	} else if (strcmp(name, "ses_enable_bb") == 0) {
-		ibpi = LED_SES_REQ_EN_BB;
-	} else if (strcmp(name, "ses_enable_ba") == 0) {
-		ibpi = LED_SES_REQ_EN_BA;
-	} else if (strcmp(name, "ses_devoff") == 0) {
-		ibpi = LED_SES_REQ_DEV_OFF;
-	} else if (strcmp(name, "ses_fault") == 0) {
-		ibpi = LED_SES_REQ_FAULT;
-	} else if (strcmp(name, "ses_prdfail") == 0) {
-		ibpi = LED_SES_REQ_PRDFAIL;
-	} else {
+	if (ibpi == LED_IBPI_PATTERN_UNKNOWN)
 		return NULL;
-	}
+
 	state = _ibpi_find(&ibpi_list, ibpi);
 	if (state == NULL)
 		state = _ibpi_state_init(ibpi);
@@ -436,10 +341,12 @@ bool _block_device_search(const struct list *block_list,
 static led_status_t _ibpi_state_add_block(struct ibpi_state *state, char *name)
 {
 	char path[PATH_MAX];
-	led_status_t rc = led_device_name_lookup(name, path);
+	led_status_t rc = led_device_name_lookup(ctx, name, path);
 
-	if (rc != LED_STATUS_SUCCESS)
+	if (rc != LED_STATUS_SUCCESS) {
+		log_error("Could not find %s.", name);
 		return rc;
+	}
 
 	if (!led_is_management_supported(ctx, path)) {
 		log_error("%s: device not supported", name);
@@ -454,9 +361,7 @@ static led_status_t _ibpi_state_add_block(struct ibpi_state *state, char *name)
 			return LED_STATUS_OUT_OF_MEMORY;
 		}
 	} else {
-		char buf[IPBI2STR_BUFF_SIZE];
-		log_info("%s: %s: device already on the list.",
-			 ibpi2str(state->ibpi, buf, sizeof(buf)), path);
+		log_info("%s: %s: device already on the list.", ibpi2str(state->ibpi), path);
 	}
 	return LED_STATUS_SUCCESS;
 }
@@ -465,14 +370,11 @@ static led_status_t verify_block_lists(void)
 {
 	if (!list_is_empty(&ibpi_list)) {
 		struct ibpi_state *state;
-		char buf[IPBI2STR_BUFF_SIZE];
 
-		list_for_each(&ibpi_list, state) {
-			if (list_is_empty(&state->block_list)) {
+		list_for_each(&ibpi_list, state)
+			if (list_is_empty(&state->block_list))
 				log_warning("IBPI %s: missing block device(s)... pattern ignored.",
-						ibpi2str(state->ibpi, buf, sizeof(buf)));
-			}
-		}
+					    ibpi2str(state->ibpi));
 	} else {
 		log_error("missing operand(s)... run %s --help for details.", progname);
 		return LED_STATUS_LIST_EMPTY;
@@ -541,87 +443,349 @@ static led_status_t _cmdline_ibpi_parse(int argc, char *argv[])
 }
 
 /**
- * @brief Command line parser - checks if command line input contains
- * options which don't require to run ledctl as root.
+ * @brief Inits request structure with initial values.
  *
- * The function parses options of ledctl application.
- * It handles option to print version and help.
- *
- * @param[in]      argc           number of elements in argv array.
- * @param[in]      argv           command line arguments.
- *
- * @return LED_STATUS_SUCCESS if successful, otherwise led_status_t.
- */
-static led_status_t _cmdline_parse_non_root(int argc, char *argv[])
-{
-	int opt_index, opt = -1;
-	led_status_t status = LED_STATUS_SUCCESS;
-
-	do {
-		opt = getopt_long(argc, argv, shortopt, longopt, &opt_index);
-		switch (opt) {
-		case 'v':
-			_ledctl_version();
-			exit(EXIT_SUCCESS);
-		case 'h':
-			_ledctl_help();
-			exit(EXIT_SUCCESS);
-		case ':':
-		case '?':
-			return LED_STATUS_CMDLINE_ERROR;
-		}
-	} while (opt >= 0);
-
-	return status;
-}
-
-/**
- * @brief Inits slot request structure with initial values.
- *
- * @param[in]       slot_req       structure with slot request
+ * @param[in]       req       structure with request
  *
  * @return This function does not return a value.
  */
-static void slot_request_init(struct slot_request *slot_req)
+static void request_init(struct request *req)
 {
-	memset(slot_req, 0, sizeof(struct slot_request));
+	memset(req, 0, sizeof(struct request));
 
-	slot_req->chosen_opt = OPT_NULL_ELEMENT;
-	slot_req->state = LED_IBPI_PATTERN_UNKNOWN;
+	req->chosen_opt = OPT_NULL_ELEMENT;
+	req->state = LED_IBPI_PATTERN_UNKNOWN;
 }
 
-struct led_slot_list_entry *find_slot(struct led_ctx *ctx, struct slot_request *slot_req)
+/**
+ * @brief Gets parameter to be printed on output.
+ *
+ * @param[in]       to_print     parameter based on user input.
+ *
+ * @return Parameter name or PRINT_ALL if all will be printed.
+ */
+static enum print_param get_param_to_print(const char *to_print)
 {
-	if (slot_req->device[0] != '\0')
-		return led_slot_find_by_device_name(ctx, slot_req->cntrl, slot_req->device);
-	else if (slot_req->slot[0] != '\0')
-		return led_slot_find_by_slot(ctx, slot_req->cntrl, slot_req->slot);
+	if (strcasecmp(to_print, "state") == 0)
+		return PRINT_STATE;
+	else if (strcasecmp(to_print, "slot") == 0)
+		return PRINT_SLOT;
+	else if (strcasecmp(to_print, "device") == 0)
+		return PRINT_DEVICE;
+	else
+		return PRINT_ALL;
+}
+
+/**
+ * @brief Displays the help.
+ *
+ * This is internal function of ledctl utility.
+ * The function prints the name and version of the program out.
+ * It displays the usage and available options and its arguments (if any).
+ * Each option is described.
+ */
+void _cmdline_parse_mode_help(int argc, char *argv[], enum opt mode)
+{
+	static int params[] = {OPT_HELP};
+	int optind_backup = optind;
+	int status = EXIT_SUCCESS;
+	struct option *longopts;
+	char *shortopts;
+	int opt;
+	int opt_index;
+
+	setup_options(&longopts, &shortopts, params, ARRAY_SIZE(params));
+
+	opt = getopt_long(argc, argv, shortopts, longopts, &opt_index);
+	if (opt != 'h') {
+		/*
+		 * Restore option index to enable correct
+		 * processing of arguments in further stages.
+		 */
+		optind = optind_backup;
+		return;
+	}
+
+	print_mode_help(mode);
+
+	free(longopts);
+	free(shortopts);
+	exit(status);
+}
+
+/**
+ * @brief Command line parser - modes.
+ *
+ * This is internal function of ledctl utility. The function parses modes
+ * of ledctl application. Refer to ledctl help in order to get more information
+ * about ledctl command line options.
+ *
+ * @param[in]      argc           program arguments count.
+ * @param[in]      argv           program arguments.
+ * @param[in]      req            structure with request.
+ *
+ * @return This function does not return a value.
+ */
+void _cmdline_parse_modes(int argc, char *argv[], struct request *req)
+{
+	char *shortopts;
+	struct option *longopts;
+	int opt_index;
+	int opt;
+
+	setup_options(&longopts, &shortopts, possible_params_modes,
+		      ARRAY_SIZE(possible_params_modes));
+
+	/* Check first parameter only */
+	opt = getopt_long(argc, argv, shortopts, longopts, &opt_index);
+	switch (opt) {
+	case 'v':
+		req->chosen_opt = OPT_VERSION;
+		break;
+	case 'h':
+		req->chosen_opt = OPT_HELP;
+		break;
+	case 'G':
+		req->chosen_opt = OPT_GET_SLOT;
+		break;
+	case 'P':
+		req->chosen_opt = OPT_LIST_SLOTS;
+		break;
+	case 'S':
+		req->chosen_opt = OPT_SET_SLOT;
+		break;
+	case 'L':
+		req->chosen_opt = OPT_LIST_CTRL;
+		break;
+	case 'I':
+		req->chosen_opt = OPT_IBPI;
+		break;
+	default:
+		/* It is fair to assume IBPI here, we need to reset option index */
+		optind = 1;
+		req->chosen_opt = OPT_IBPI;
+	}
+}
+
+/**
+ * @brief Setup mode options.
+ *
+ * The function setups possible options depending on detected mode.
+ *
+ * @param[in]      req            structure with request.
+ * @param[in]      shortopts      legitimate option characters.
+ * @param[in]      longopts       pointer to the first element of an array of struct option.
+ *
+ * @return bool if successful, otherwise false.
+ */
+bool _setup_mode_options(struct request * const req, char **shortopts, struct option **longopts)
+{
+	switch (req->chosen_opt) {
+	case OPT_GET_SLOT:
+		setup_options(longopts, shortopts, possible_params_get_slot,
+			      ARRAY_SIZE(possible_params_get_slot));
+		break;
+	case OPT_LIST_SLOTS:
+		setup_options(longopts, shortopts, possible_params_list_slots,
+			      ARRAY_SIZE(possible_params_list_slots));
+		break;
+	case OPT_SET_SLOT:
+		setup_options(longopts, shortopts, possible_params_set_slot,
+			      ARRAY_SIZE(possible_params_set_slot));
+		break;
+	case OPT_LIST_CTRL:
+		setup_options(longopts, shortopts, possible_params_list_ctrl,
+			      ARRAY_SIZE(possible_params_list_ctrl));
+		break;
+	case OPT_IBPI:
+		setup_options(longopts, shortopts, possible_params_ibpi,
+			      ARRAY_SIZE(possible_params_ibpi));
+		break;
+	case OPT_VERSION:
+	case OPT_HELP:
+	default:
+		log_error("Detected non supported request option.");
+		return false;
+	}
+
+	return true;
+}
+
+/**
+ * @brief Command line parser - non modes options.
+ *
+ * This is internal function of ledctl utility. The function parses non modes
+ * parameters of ledctl application. Refer to ledctl help in order to get more
+ * information about ledctl command line options.
+ *
+ * @param[in]      opt            option character to be parsed.
+ * @param[in]      opt_index      index of the long option relative to longopts.
+ * @param[in]      longopts       pointer to the first element of an array of struct option.
+ * @param[in]      req            structure with request.
+ *
+ * @return LED_STATUS_SUCCESS if successful, otherwise one of failure led_status_t.
+ */
+led_status_t _cmdline_parse_params(int opt, int opt_index, struct option *longopts,
+				   struct request *req)
+{
+	switch (opt) {
+
+	case 0:
+	{
+		int option_id = get_option_id(longopts[opt_index].name);
+
+		switch (option_id) {
+		case OPT_LOG_LEVEL:
+		{
+			int log_level = get_option_id(optarg);
+
+			if (log_level != -1)
+				set_verbose_level(&conf, log_level);
+			else
+				return LED_STATUS_CMDLINE_ERROR;
+			break;
+		}
+		default:
+			set_verbose_level(&conf, option_id);
+		}
+		break;
+	}
+	case 'l':
+		set_log_path(&conf, optarg);
+		break;
+	case 'x':
+		listed_only = 1;
+		break;
+#ifdef ENABLE_TEST
+	case 'T':
+		test_params = true;
+		break;
+#endif
+	case 'n':
+		req->cntrl = led_string_to_cntrl_type(optarg);
+		break;
+	case 's':
+	{
+		struct ibpi_state *state = _ibpi_state_get(optarg);
+
+		if (state) {
+			req->state = state->ibpi;
+		} else {
+			log_error("Invalid IBPI state: '%s'.", optarg);
+			return LED_STATUS_CMDLINE_ERROR;
+		}
+		free(state);
+		break;
+	}
+	case 'd':
+		strncpy(req->device, optarg, PATH_MAX - 1);
+		break;
+	case 'p':
+		strncpy(req->slot, optarg, PATH_MAX - 1);
+		break;
+	case 'r':
+		req->to_print = get_param_to_print(optarg);
+		break;
+	case 'h':
+		_print_incorrect_help_usage();
+		return LED_STATUS_NOT_SUPPORTED;
+	case ':':
+	case '?':
+	default:
+		return LED_STATUS_CMDLINE_ERROR;
+	}
+
+	return LED_STATUS_SUCCESS;
+}
+
+/**
+ * @brief Command line parser - options.
+ *
+ * This is internal function of ledctl utility. The function parses options of
+ * ledctl application. Refer to ledctl help in order to get more information
+ * about ledctl command line options.
+ *
+ * @param[in]      argc           number of elements in argv array.
+ * @param[in]      argv           command line arguments.
+ * @param[in]      req            structure with request.
+ *
+ * @return LED_STATUS_SUCCESS if successful, otherwise led_status_t.
+ */
+led_status_t _cmdline_parse(int argc, char *argv[], struct request *req)
+{
+	int opt, opt_index = -1;
+	char *shortopts;
+	struct option *longopts;
+	led_status_t ret = LED_STATUS_SUCCESS;
+
+	if (!_setup_mode_options(req, &shortopts, &longopts))
+		return LED_STATUS_CMDLINE_ERROR;
+
+	do {
+		opt = getopt_long(argc, argv, shortopts, longopts, &opt_index);
+
+		if (opt == -1)
+			break;
+		ret = _cmdline_parse_params(opt, opt_index, longopts, req);
+		if (!ret)
+			continue;
+		if (ret == LED_STATUS_CMDLINE_ERROR)
+			log_error("Cannot parse parameter '%s'. It may be invalid or not supported for selected mode.",
+				   argv[optind - 1]);
+		break;
+	} while (1);
+	free(longopts);
+	free(shortopts);
+	return ret;
+}
+
+void execute_non_root_request(struct request *req)
+{
+	switch (req->chosen_opt) {
+	case OPT_VERSION:
+		_ledctl_version();
+		exit(EXIT_SUCCESS);
+	case OPT_HELP:
+		_print_main_help();
+		exit(EXIT_SUCCESS);
+	}
+}
+
+struct led_slot_list_entry *find_slot(struct led_ctx *ctx, struct request *req)
+{
+	if (req->device[0] != '\0')
+		return led_slot_find_by_device_name(ctx, req->cntrl, req->device);
+	else if (req->slot[0] != '\0')
+		return led_slot_find_by_slot(ctx, req->cntrl, req->slot);
 	return NULL;
 }
 
 /**
- * @brief Verifies slot request parameters.
+ * @brief Verifies request parameters.
  *
- * @param[in]       slot_req       structure with slot request
+ * @param[in]       ctx       library context.
+ * @param[in]       req       structure with request.
  *
  * @return LED_STATUS_SUCCESS if successful, otherwise led_status_t.
  */
-static led_status_t slot_verify_request(struct led_ctx *ctx, struct slot_request *slot_req)
+static led_status_t verify_request(struct led_ctx *ctx, struct request *req)
 {
-	if (slot_req->cntrl == LED_CNTRL_TYPE_UNKNOWN) {
+	if (req->chosen_opt == OPT_LIST_CTRL)
+		return LED_STATUS_SUCCESS;
+	if (req->cntrl == LED_CNTRL_TYPE_UNKNOWN) {
 		log_error("Invalid controller in the request.");
 		return LED_STATUS_INVALID_CONTROLLER;
 	}
-	if (slot_req->chosen_opt == OPT_SET_SLOT && slot_req->state == LED_IBPI_PATTERN_UNKNOWN) {
+	if (req->chosen_opt == OPT_SET_SLOT && req->state == LED_IBPI_PATTERN_UNKNOWN) {
 		log_error("Invalid IBPI state in the request.");
 		return LED_STATUS_INVALID_STATE;
 	}
-	if (slot_req->device[0] && slot_req->slot[0]) {
+	if (req->device[0] && req->slot[0]) {
 		log_error("Device and slot parameters are exclusive.");
 		return LED_STATUS_DATA_ERROR;
 	}
-	if (slot_req->chosen_opt != OPT_LIST_SLOTS) {
-		struct led_slot_list_entry *slot = find_slot(ctx, slot_req);
+	if (req->chosen_opt != OPT_LIST_SLOTS) {
+		struct led_slot_list_entry *slot = find_slot(ctx, req);
 
 		if (!slot) {
 			log_error("Slot was not found for provided parameters.");
@@ -632,17 +796,36 @@ static led_status_t slot_verify_request(struct led_ctx *ctx, struct slot_request
 	return LED_STATUS_SUCCESS;
 }
 
-
-static inline void print_slot(struct led_slot_list_entry *s)
+static void print_slot(struct led_slot_list_entry *s, enum print_param to_print)
 {
-	char buf[IPBI2STR_BUFF_SIZE];
 	const char *device_name = led_slot_device(s);
+	const char *slot_id = basename(led_slot_id(s));
+	const char *ibpi_str = ibpi2str(led_slot_state(s));
 
-	printf("slot: %-15s led state: %-15s device: %-15s\n",
-		basename(led_slot_id(s)), ibpi2str(led_slot_state(s), buf, sizeof(buf)),
-		(device_name != NULL) ? device_name : "(empty)");
+	if (!device_name)
+		device_name = "(empty)";
+
+	switch (to_print) {
+	case PRINT_SLOT:
+		printf("%s\n", slot_id);
+		return;
+	case PRINT_DEVICE:
+		printf("%s\n", device_name);
+		return;
+	case PRINT_STATE:
+		printf("%s\n", ibpi_str);
+		return;
+	default:
+		printf("slot: %-15s led state: %-15s device: %-15s\n",
+			slot_id, ibpi_str, device_name);
+	}
 }
 
+static void print_cntrl(struct led_cntrl_list_entry *cntrl)
+{
+	printf("%s (%s)\n", led_cntrl_path(cntrl),
+		led_cntrl_type_to_string(led_cntrl_type(cntrl)));
+}
 
 /**
  * @brief List slots connected to given controller
@@ -670,7 +853,7 @@ static led_status_t list_slots(enum led_cntrl_type cntrl_type)
 
 	while ((slot = led_slot_next(slot_list))) {
 		if (cntrl_type == led_slot_cntrl(slot))
-			print_slot(slot);
+			print_slot(slot, PRINT_ALL);
 	}
 
 	led_slot_list_free(slot_list);
@@ -680,160 +863,65 @@ static led_status_t list_slots(enum led_cntrl_type cntrl_type)
 /**
  * @brief Executes proper slot mode function.
  *
- * @param[in]       slot_req       Structure with slot request.
+ * @param[in]       ctx       library context.
+ * @param[in]       req       structure with request.
  *
  * @return LED_STATUS_SUCCESS if successful, otherwise led_status_t.
  */
-led_status_t slot_execute(struct led_ctx *ctx, struct slot_request *slot_req)
+led_status_t execute_request(struct led_ctx *ctx, struct request *req)
 {
 	struct led_slot_list_entry *slot;
 
-	if (slot_req->chosen_opt == OPT_LIST_SLOTS)
-		return list_slots(slot_req->cntrl);
+	if (req->chosen_opt == OPT_LIST_SLOTS)
+		return list_slots(req->cntrl);
 
-	slot = find_slot(ctx, slot_req);
+	if (req->chosen_opt == OPT_LIST_CTRL) {
+		struct led_cntrl_list_entry *cntrl = NULL;
+		struct led_cntrl_list *cntrls = NULL;
+		led_status_t status;
+
+		status = led_cntrls_get(ctx, &cntrls);
+		if (status != LED_STATUS_SUCCESS) {
+			log_error("Error on controller retrieval %s\n",
+					ledctl_strstatus((led_status_t)status));
+			exit(EXIT_FAILURE);
+		}
+
+		while ((cntrl = led_cntrl_next(cntrls)))
+			print_cntrl(cntrl);
+
+		led_cntrl_list_free(cntrls);
+
+		exit(EXIT_SUCCESS);
+	}
+
+	slot = find_slot(ctx, req);
 	if (slot == NULL)
 		return LED_STATUS_DATA_ERROR;
 
-	switch (slot_req->chosen_opt) {
+	switch (req->chosen_opt) {
 	case OPT_SET_SLOT:
 	{
 		led_status_t set_rc = LED_STATUS_SUCCESS;
-		char buf[IPBI2STR_BUFF_SIZE];
 
-		if (slot_req->state != LED_IBPI_PATTERN_LOCATE_OFF
-		    && led_slot_state(slot) == slot_req->state) {
+		if (req->state != LED_IBPI_PATTERN_LOCATE_OFF
+		    && led_slot_state(slot) == req->state) {
 			log_warning("Led state: %s is already set for the slot.",
-				    ibpi2str(slot_req->state, buf, sizeof(buf)));
+				    ibpi2str(req->state));
 		} else {
-			set_rc = led_slot_set(ctx, slot, slot_req->state);
+			set_rc = led_slot_set(ctx, slot, req->state);
 		}
 		led_slot_list_entry_free(slot);
 		return set_rc;
 	}
 	case OPT_GET_SLOT:
-		print_slot(slot);
+		print_slot(slot, req->to_print);
 		led_slot_list_entry_free(slot);
 		return LED_STATUS_SUCCESS;
 	default:
 		led_slot_list_entry_free(slot);
 		return LED_STATUS_NOT_SUPPORTED;
 	}
-}
-
-static void print_cntrl(struct led_cntrl_list_entry *cntrl)
-{
-	printf("%s (%s)\n", led_cntrl_path(cntrl),
-		led_cntrl_type_to_string(led_cntrl_type(cntrl)));
-}
-
-/**
- * @brief Command line parser - options.
- *
- * This is internal function of ledctl utility. The function parses options of
- * ledctl application. Refer to ledctl help in order to get more information
- * about ledctl command line options.
- *
- * @param[in]      argc           number of elements in argv array.
- * @param[in]      argv           command line arguments.
- *
- * @return LED_STATUS_SUCCESS if successful, otherwise led_status_t.
- */
-led_status_t _cmdline_parse(int argc, char *argv[], struct slot_request *req)
-{
-	int opt, opt_index = -1;
-	led_status_t status = LED_STATUS_SUCCESS;
-
-	optind = 1;
-
-	do {
-		opt = getopt_long(argc, argv, shortopt, longopt, &opt_index);
-		if (opt == -1)
-			break;
-		switch (opt) {
-		int log_level;
-
-		case 0:
-			switch (get_option_id(longopt[opt_index].name)) {
-			case OPT_LOG_LEVEL:
-				log_level = get_option_id(optarg);
-				if (log_level != -1)
-					status = set_verbose_level(&conf, log_level);
-				else
-					status = LED_STATUS_CMDLINE_ERROR;
-				break;
-			default:
-				status = set_verbose_level(
-						&conf, possible_params[opt_index]);
-
-			}
-			break;
-		case 'l':
-			status = set_log_path(&conf, optarg);
-			break;
-		case 'x':
-			status = LED_STATUS_SUCCESS;
-			listed_only = 1;
-			break;
-		case 'L':
-		{
-			struct led_cntrl_list_entry *cntrl = NULL;
-			struct led_cntrl_list *cntrls = NULL;
-			led_status_t status;
-
-			status = led_cntrls_get(ctx, &cntrls);
-			if (status != LED_STATUS_SUCCESS) {
-				log_error("Error on controller retrieval %s\n",
-					  ledctl_strstatus((led_status_t)status));
-				exit(EXIT_FAILURE);
-			}
-
-			while ((cntrl = led_cntrl_next(cntrls)))
-				print_cntrl(cntrl);
-
-			led_cntrl_list_free(cntrls);
-
-			exit(EXIT_SUCCESS);
-		}
-		case 'G':
-			req->chosen_opt = OPT_GET_SLOT;
-			break;
-		case 'P':
-			req->chosen_opt = OPT_LIST_SLOTS;
-			break;
-		case 'S':
-			req->chosen_opt = OPT_SET_SLOT;
-			break;
-		case 'c':
-			req->cntrl = led_string_to_cntrl_type(optarg);
-			break;
-		case 's':
-		{
-			struct ibpi_state *state = _ibpi_state_get(optarg);
-
-			if (state)
-				req->state = state->ibpi;
-			free(state);
-			break;
-		}
-		case 'd':
-			strncpy(req->device, optarg, PATH_MAX - 1);
-			break;
-		case 'p':
-			strncpy(req->slot, optarg, PATH_MAX - 1);
-			break;
-		case ':':
-		case '?':
-		default:
-			log_debug("[opt='%c', opt_index=%d]", opt, opt_index);
-			return LED_STATUS_CMDLINE_ERROR;
-		}
-		opt_index = -1;
-		if (status != LED_STATUS_SUCCESS)
-			return status;
-	} while (1);
-
-	return LED_STATUS_SUCCESS;
 }
 
 /**
@@ -849,7 +937,7 @@ led_status_t _cmdline_parse(int argc, char *argv[], struct slot_request *req)
  *
  * @return LED_STATUS_SUCCESS if successful, otherwise LED_STATUS_IBPI_DETERMINE_ERROR
  */
-static led_status_t _ledctl_execute(struct list *ibpi_local_list)
+static led_status_t _ledctl_execute_ibpi(struct list *ibpi_local_list)
 {
 	struct ibpi_state *state;
 	char *device;
@@ -903,6 +991,34 @@ static led_status_t _init_ledctl_conf(void)
 	return ledmon_init_conf(&conf, LED_LOG_LEVEL_WARNING, LEDCTL_DEF_LOG_FILE);
 }
 
+static const char *get_log_level_name(enum led_log_level_enum log_level)
+{
+	switch (log_level) {
+	case LED_LOG_LEVEL_UNDEF:
+		return "UNDEF";
+	case LED_LOG_LEVEL_QUIET:
+		return "QUIET";
+	case LED_LOG_LEVEL_ERROR:
+		return "ERROR";
+	case LED_LOG_LEVEL_WARNING:
+		return "WARNING";
+	case LED_LOG_LEVEL_INFO:
+		return "INFO";
+	case LED_LOG_LEVEL_DEBUG:
+		return "DEBUG";
+	case LED_LOG_LEVEL_ALL:
+		return "ALL";
+	default:
+		return "UNDEF";
+	}
+}
+
+static void print_configuration(void)
+{
+	printf("LOG_LEVEL=%s\n", get_log_level_name(conf.log_level));
+	printf("LOG_PATH=%s\n", conf.log_path);
+}
+
 /**
  * @brief Propagate the configuration setting to the library settings
  */
@@ -941,21 +1057,39 @@ int main(int argc, char *argv[])
 	led_status_t lib_rc;
 
 	led_status_t status;
-	struct slot_request slot_req;
+	struct request req;
 
-	setup_options(&longopt, &shortopt, possible_params,
-			possible_params_size);
+	if (argc == 1) {
+		fprintf(stderr, "Program cannot be run without parameters.\n");
+		return LED_STATUS_CMDLINE_ERROR;
+	}
+
 	set_invocation_name(argv[0]);
 
-	if (_cmdline_parse_non_root(argc, argv) != LED_STATUS_SUCCESS)
-		return LED_STATUS_CMDLINE_ERROR;
+	request_init(&req);
 
-	openlog(progname, LOG_PERROR, LOG_USER);
+	/* Silence error if something is not recognized, errors are redefined */
+	opterr = 0;
+
+	_cmdline_parse_modes(argc, argv, &req);
+
+	if ((req.chosen_opt == OPT_HELP || req.chosen_opt == OPT_VERSION))
+		execute_non_root_request(&req);
+
+	_cmdline_parse_mode_help(argc, argv, req.chosen_opt);
+
+	if (req.chosen_opt == OPT_VERSION && argc > 2) {
+		fprintf(stderr, "Parameter '%s' can be used alone only.\n",
+			longopt_all[req.chosen_opt].name);
+		exit(LED_STATUS_CMDLINE_ERROR);
+	}
 
 	if (geteuid() != 0) {
 		fprintf(stderr, "Only root can run this application.\n");
 		return LED_STATUS_NOT_A_PRIVILEGED_USER;
 	}
+
+	openlog(progname, LOG_PERROR, LOG_USER);
 
 	lib_rc = led_new(&ctx);
 	if (lib_rc != LED_STATUS_SUCCESS) {
@@ -967,13 +1101,21 @@ int main(int argc, char *argv[])
 	if (status != LED_STATUS_SUCCESS)
 		return status;
 
-	if (on_exit(_ledctl_fini, progname))
+	if (atexit(_ledctl_fini))
 		exit(LED_STATUS_ONEXIT_ERROR);
 
 	status = _read_shared_conf();
 	if (status != LED_STATUS_SUCCESS)
 		return status;
 	_unset_unused_options();
+
+	status = _cmdline_parse(argc, argv, &req);
+	if (status != LED_STATUS_SUCCESS || test_params) {
+		if (test_params)
+			print_configuration();
+		exit(status);
+	}
+
 	status = log_open(&conf);
 	if (status != LED_STATUS_SUCCESS)
 		return LED_STATUS_LOG_FILE_ERROR;
@@ -989,20 +1131,16 @@ int main(int argc, char *argv[])
 		return status;
 	}
 
-	slot_request_init(&slot_req);
-	status = _cmdline_parse(argc, argv, &slot_req);
 	if (status != LED_STATUS_SUCCESS)
 		exit(LED_STATUS_CMDLINE_ERROR);
-	free(shortopt);
-	free(longopt);
 
 	list_init(&ibpi_list, (item_free_t)ibpi_state_fini);
-	if (slot_req.chosen_opt != OPT_NULL_ELEMENT) {
-		status = slot_verify_request(ctx, &slot_req);
+	if (req.chosen_opt != OPT_NULL_ELEMENT && req.chosen_opt != OPT_IBPI) {
+		status = verify_request(ctx, &req);
 		if (status == LED_STATUS_SUCCESS)
-			return slot_execute(ctx, &slot_req);
-		else
-			exit(status);
+			return execute_request(ctx, &req);
+
+		exit(status);
 	}
 	status = _cmdline_ibpi_parse(argc, argv);
 	if (status != LED_STATUS_SUCCESS) {
@@ -1010,5 +1148,5 @@ int main(int argc, char *argv[])
 			  ledctl_strstatus(status));
 		exit(status);
 	}
-	return _ledctl_execute(&ibpi_list);
+	return _ledctl_execute_ibpi(&ibpi_list);
 }

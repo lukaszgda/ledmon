@@ -1,6 +1,6 @@
 /*
  * Intel(R) Enclosure LED Utilities
- * Copyright (C) 2022-2023 Intel Corporation.
+ * Copyright (C) 2022-2024 Intel Corporation.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -46,7 +46,7 @@ struct ibpi2value ibpi_to_attention[] = {
 	{LED_IBPI_PATTERN_REBUILD, ATTENTION_REBUILD},
 	{LED_IBPI_PATTERN_LOCATE_OFF, ATTENTION_OFF},
 	{LED_IBPI_PATTERN_ONESHOT_NORMAL, ATTENTION_OFF},
-	{LED_IBPI_PATTERN_UNKNOWN}
+	{LED_IBPI_PATTERN_UNKNOWN, 0}
 };
 
 #define SYSFS_PCIEHP         "/sys/module/pciehp"
@@ -161,11 +161,9 @@ status_t vmdssd_write_attention_buf(struct pci_slot *slot, enum led_ibpi_pattern
 
 	ibpi2val = get_by_ibpi(ibpi, ibpi_to_attention, ARRAY_SIZE(ibpi_to_attention));
 	if (ibpi2val->ibpi == LED_IBPI_PATTERN_UNKNOWN) {
-		char ibpi_buff[IPBI2STR_BUFF_SIZE];
 
 		lib_log(slot->ctx, LED_LOG_LEVEL_INFO,
-			"VMD: Controller doesn't support %s pattern\n",
-			ibpi2str(ibpi, ibpi_buff, sizeof(ibpi_buff)));
+			"VMD: Controller doesn't support %s pattern\n", ibpi2str(ibpi));
 		return STATUS_INVALID_STATE;
 	}
 	val = (uint16_t)ibpi2val->value;

@@ -1,6 +1,6 @@
 /*
  * Intel(R) Enclosure LED Utilities
- * Copyright (C) 2022-2023 Intel Corporation.
+ * Copyright (C) 2022-2024 Intel Corporation.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -71,16 +71,22 @@ struct log_level_info log_level_infos[] = {
 char *get_text(const char *path, const char *name)
 {
 	char temp[PATH_MAX];
+	int ret;
 
-	snprintf(temp, sizeof(temp), "%s/%s", path, name);
+	ret = snprintf(temp, sizeof(temp), "%s/%s", path, name);
+	if (ret < 0 || ret >= PATH_MAX)
+		return NULL;
 	return buf_read(temp);
 }
 
 char *get_text_to_dest(const char *path, const char *name, char *dest, size_t dest_len)
 {
 	char temp[PATH_MAX];
+	int ret;
 
-	snprintf(temp, sizeof(temp), "%s/%s", path, name);
+	ret = snprintf(temp, sizeof(temp), "%s/%s", path, name);
+	if (ret < 0 || ret >= PATH_MAX)
+		return NULL;
 	return buf_read_to_dest(temp, dest, dest_len);
 }
 
@@ -125,8 +131,15 @@ int get_int(const char *path, int defval, const char *name)
 	return defval;
 }
 
-/**
- */
+bool is_subpath(const char * const path, const char * const subpath, size_t subpath_strlen)
+{
+	assert(path && subpath);
+
+	if (strncmp(path, subpath, subpath_strlen) == 0)
+		return true;
+	return false;
+}
+
 int scan_dir(const char *path, struct list *result)
 {
 	struct dirent *dirent;
@@ -472,33 +485,6 @@ char *get_path_hostN(const char *path)
 	return s;
 }
 
-int match_string(struct led_ctx *ctx, const char *string, const char *pattern)
-{
-	int status;
-	regex_t regex;
-
-	if (!string || !pattern)
-		return 0;
-
-	if (strcmp(string, pattern) == 0)
-		return 1;
-
-	status = regcomp(&regex, pattern, REG_EXTENDED);
-	if (status != 0) {
-		lib_log(ctx, LED_LOG_LEVEL_ERROR,
-			"Failed to initialize regular expression pattern (%s), regcomp ret=%d",
-			pattern, status);
-		return 0;
-	}
-
-	status = regexec(&regex, string, 0, NULL, 0);
-	regfree(&regex);
-	if (status != 0)
-		return 0;
-
-	return 1;
-}
-
 int get_log_fd(struct ledmon_conf *conf)
 {
 	if (conf->s_log)
@@ -595,10 +581,13 @@ struct option longopt_all[] = {
 	[OPT_LIST_SLOTS]   = {"list-slots", no_argument, NULL, 'P'},
 	[OPT_GET_SLOT]     = {"get-slot", no_argument, NULL, 'G'},
 	[OPT_SET_SLOT]     = {"set-slot", no_argument, NULL, 'S'},
-	[OPT_CNTRL_TYPE]   = {"controller-type", required_argument, NULL, 'c'},
+	[OPT_CNTRL_TYPE]   = {"controller-type", required_argument, NULL, 'n'},
 	[OPT_DEVICE]       = {"device", required_argument, NULL, 'd'},
 	[OPT_SLOT]         = {"slot", required_argument, NULL, 'p'},
 	[OPT_STATE]        = {"state", required_argument, NULL, 's'},
+	[OPT_PRINT_PARAM]  = {"print", required_argument, NULL, 'r'},
+	[OPT_TEST]         = {"test", no_argument, NULL, 'T'},
+	[OPT_IBPI]         = {"ibpi", no_argument, NULL, 'I' },
 	[OPT_NULL_ELEMENT] = {NULL, no_argument, NULL, '\0'}
 };
 
@@ -701,49 +690,98 @@ status_t set_verbose_level(struct ledmon_conf *conf, int log_level)
 }
 
 /**
- * @brief IBPI pattern names.
- *
- * This is internal array holding names of IBPI pattern. Logging routines use
- * this entries to translate enumeration type values into the string.
+ * @brief Mapping IBPI states to strings. There are 2 strings:
+ *        - logs, uppercase for readability, should be set for all patterns.
+ *        - user input, user friendly names, could not be set.
  */
-const char *ibpi_str[led_ibpi_pattern_count] = {
-	[LED_IBPI_PATTERN_UNKNOWN]        = "UNKNOWN",
-	[LED_IBPI_PATTERN_NORMAL]         = "NORMAL",
-	[LED_IBPI_PATTERN_ONESHOT_NORMAL] = "ONESHOT_NORMAL",
-	[LED_IBPI_PATTERN_DEGRADED]       = "ICA",
-	[LED_IBPI_PATTERN_REBUILD]        = "REBUILD",
-	[LED_IBPI_PATTERN_FAILED_ARRAY]   = "IFA",
-	[LED_IBPI_PATTERN_HOTSPARE]       = "HOTSPARE",
-	[LED_IBPI_PATTERN_PFA]            = "PFA",
-	[LED_IBPI_PATTERN_FAILED_DRIVE]   = "FAILURE",
-	[LED_IBPI_PATTERN_LOCATE]         = "LOCATE",
-	[LED_IBPI_PATTERN_LOCATE_OFF]     = "LOCATE_OFF",
-	[LED_IBPI_PATTERN_ADDED]          = "ADDED",
-	[LED_IBPI_PATTERN_REMOVED]        = "REMOVED",
-	[LED_IBPI_PATTERN_LOCATE_AND_FAILED_DRIVE] = "LOCATE_AND_FAILURE"
+struct ibpi2names {
+	enum led_ibpi_pattern ibpi;
+	char *log_name;
+	char *input_name;
 };
 
-const char *ibpi2str_table(enum led_ibpi_pattern ibpi, const char *names[], char *buf,
-			   size_t buf_size)
+const struct ibpi2names ipbi_names[] = {
+	{LED_IBPI_PATTERN_REBUILD,		"REBUILD",		"rebuild"},
+	{LED_IBPI_PATTERN_LOCATE,		"LOCATE",		"locate"},
+	{LED_IBPI_PATTERN_LOCATE_OFF,		"LOCATE_OFF",		"locate_off"},
+	{LED_IBPI_PATTERN_LOCATE_AND_FAIL,	"LOCATE_AND_FAIL",	"locate_and_failure"},
+	{LED_SES_REQ_ABORT,			"SES_ABORT",		"ses_abort"},
+	{LED_SES_REQ_REBUILD,			"SES_REBUILD",		"ses_rebuild"},
+	{LED_SES_REQ_IFA,			"SES_IFA",		"ses_ifa"},
+	{LED_SES_REQ_ICA,			"SES_ICA",		"ses_ica"},
+	{LED_SES_REQ_CONS_CHECK,		"SES_CONS_CHECK",	"ses_cons_check"},
+	{LED_SES_REQ_HOTSPARE,			"SES_HOTSPARE",		"ses_hotspare"},
+	{LED_SES_REQ_RSVD_DEV,			"SES_RSVD_DEV",		"ses_rsvd_dev"},
+	{LED_SES_REQ_OK,			"SES_OK",		"ses_ok"},
+	{LED_SES_REQ_IDENT,			"SES_IDENT",		"ses_ident"},
+	{LED_SES_REQ_RM,			"SES_RM",		"ses_rm"},
+	{LED_SES_REQ_INS,			"SES_INSERT",		"ses_insert"},
+	{LED_SES_REQ_MISSING,			"SES_MISSING",		"ses_missing"},
+	{LED_SES_REQ_DNR,			"SES_DNR",		"ses_dnr"},
+	{LED_SES_REQ_ACTIVE,			"SES_ACTIVE",		"ses_active"},
+	{LED_SES_REQ_EN_BB,			"SES_ENABLE_BB",	"ses_enable_bb"},
+	{LED_SES_REQ_EN_BA,			"SES_ENABLE_BA",	"ses_enable_ba"},
+	{LED_SES_REQ_DEV_OFF,			"SES_DEVOFF",		"ses_devoff"},
+	{LED_SES_REQ_FAULT,			"SES_FAULT",		"ses_fault"},
+	{LED_SES_REQ_PRDFAIL,			"SES_PRDFAIL",		"ses_prdfail"},
+
+	/* Special internal patterns, can be only printed */
+	{LED_IBPI_PATTERN_UNKNOWN,		"UNKNOWN",		NULL},
+	{LED_IBPI_PATTERN_ADDED,		"ADDED",		NULL},
+	{LED_IBPI_PATTERN_REMOVED,		"REMOVED",		NULL},
+	{LED_IBPI_PATTERN_ONESHOT_NORMAL,	"ONESHOT_NORMAL",	NULL},
+
+	/* Here comes IBPI states with multiple input names defined. */
+	{LED_IBPI_PATTERN_NORMAL,	"NORMAL",	"normal"},
+	{LED_IBPI_PATTERN_NORMAL,	"NORMAL",	"off"},
+
+	{LED_IBPI_PATTERN_DEGRADED,	"ICA",		"ica"},
+	{LED_IBPI_PATTERN_DEGRADED,	"ICA",		"degraded"},
+
+	{LED_IBPI_PATTERN_FAILED_ARRAY,	"IFA",		"ifa"},
+	{LED_IBPI_PATTERN_FAILED_ARRAY,	"IFA",		"failed_array"},
+
+	{LED_IBPI_PATTERN_HOTSPARE,	"HOTSPARE",	"hotspare"},
+	{LED_IBPI_PATTERN_PFA,		"PFA",		"pfa"},
+
+	{LED_IBPI_PATTERN_FAILED_DRIVE,	"FAILURE",	"failure"},
+	{LED_IBPI_PATTERN_FAILED_DRIVE,	"FAILURE",	"disk_failed"},
+
+	{LED_IBPI_PATTERN_COUNT,	"UNKNOWN",	NULL},
+};
+
+/**
+ * @brief Return log friendly IBPI pattern name.
+ *
+ * Every led_ibpi_pattern must be defined. Do not put pointer to free.
+ */
+const char *ibpi2str(enum led_ibpi_pattern ibpi)
 {
-	const char *ret;
+	int i;
 
-	if (ibpi >= 0 && ibpi < led_ibpi_pattern_count)
-		ret = names[ibpi];
-	else
-		ret = NULL;
+	for (i = 0; i < ARRAY_SIZE(ipbi_names); i++)
+		if (ipbi_names[i].ibpi == ibpi)
+			return ipbi_names[i].log_name;
 
-	if (!ret) {
-		snprintf(buf, buf_size, "(unknown: %u)", ibpi);
-		ret = buf;
-	}
-
-	return ret;
+	/* That should not happen */
+	assert(false);
 }
 
-const char *ibpi2str(enum led_ibpi_pattern ibpi, char *buf, size_t buf_size)
+enum led_ibpi_pattern string2ibpi(const char *name)
 {
-	return ibpi2str_table(ibpi, ibpi_str, buf, buf_size);
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(ipbi_names); i++) {
+		char *input_name = ipbi_names[i].input_name;
+
+		if (!input_name)
+			continue;
+
+		if (strncmp(input_name, name, strlen(input_name)) == 0)
+			return ipbi_names[i].ibpi;
+	}
+
+	return LED_IBPI_PATTERN_UNKNOWN;
 }
 
 static const struct ibpi2value *get_ibpi2value(const enum led_ibpi_pattern val,

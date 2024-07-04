@@ -1,6 +1,6 @@
 /*
  * Intel(R) Enclosure LED Utilities
- * Copyright (C) 2022-2023 Intel Corporation.
+ * Copyright (C) 2022-2024 Intel Corporation.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -32,7 +32,7 @@
 #include "led/libled.h"
 #include "list.h"
 #include "raid.h"
-#include "slave.h"
+#include "tail.h"
 #include "status.h"
 #include "sysfs.h"
 #include "utils.h"

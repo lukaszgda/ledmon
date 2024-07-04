@@ -2,16 +2,20 @@
 AC_PREREQ([2.69])
 
 
-m4_define([MAJOR_VERSION], 0)
-m4_define([MINOR_VERSION], 97)
+m4_define([MAJOR_VERSION], 1)
+m4_define([MINOR_VERSION], 0)
 m4_define([MICRO_VERSION], 0)
 
 AC_INIT([ledmon],[MAJOR_VERSION.MINOR_VERSION.MICRO_VERSION])
 AC_CONFIG_MACRO_DIR([m4])
-AC_SUBST([PACKAGE_DATE], "May 2023")
+AC_SUBST([PACKAGE_DATE], "March 2024")
 AM_INIT_AUTOMAKE([-Wall -Werror foreign subdir-objects])
 
-LT_PREREQ([2.4.6])
+# If CFLAGS was not set, do not set default compiler flags, leave it empty.
+# https://www.gnu.org/savannah-checkouts/gnu/autoconf/manual/autoconf-2.72/autoconf.html#index-AC_005fPROG_005fCC-1
+: ${CFLAGS=""}
+
+LT_PREREQ([2.4.2])
 AM_PROG_AR
 LT_INIT
 
@@ -32,9 +36,6 @@ AX_CHECK_PROG([make])
 # Fix 1 or more bugs in project and do a release -> 0.97.1
 # Fix 1 or more bugs and add API additions and do a release -> 0.98.0
 #
-# Change this to 1.0.0 when we have API stable, before then the convention is to
-# have X == 0 which means unstable API.
-#
 # Full details for semantic versioning:
 # https://semver.org/
 #
@@ -46,17 +47,17 @@ LIBLED_LIBTOOL_VERSION=$CURRENT:$REVISION:$AGE
 
 AC_SUBST([LIBLED_LIBTOOL_VERSION])
 
-AC_PROG_CC
+AC_PROG_CC_STDC
 AC_PROG_INSTALL
 
 AC_CONFIG_HEADERS([config_ac.h])
 
 # Add compiler flags.
-AM_CFLAGS='-Wall -I../config'
+AM_CFLAGS='-Wall -I../config -O2'
 AM_CPPFLAGS='-D_DEBUG -D_GNU_SOURCE -D_DEFAULT_SOURCE -DDMALLOC_DISABLE -DBUILD_LABEL=\""$(BUILD_LABEL)"\"'
 
 AC_DEFUN([AX_AM_CFLAGS_ADD],[AX_CHECK_COMPILE_FLAG($1, AM_CFLAGS="$AM_CFLAGS $1")])
-AX_AM_CFLAGS_ADD([-Wformat -Wformat-security -Werror])
+AX_AM_CFLAGS_ADD([-Wformat -Wformat-security])
 AX_AM_CFLAGS_ADD([-Wformat-overflow=2])
 AX_AM_CFLAGS_ADD([-Wno-strict-overflow])
 AX_AM_CFLAGS_ADD([-fno-delete-null-pointer-checks])
@@ -129,7 +130,8 @@ AS_IF([test "x$enable_systemd" = xyes], [SYSTEMD_STR=yes], [SYSTEMD_STR=no])
 AM_CONDITIONAL([SYSTEMD_CONDITION], [test "$SYSTEMD_STR" = yes])
 
 # target directory for ledmon service file
-AC_SUBST([SYSTEMD_PATH], "$(pkg-config systemd --variable=systemdsystemunitdir)")
+SYSTEMD_PATH="$(pkg-config systemd --variable=systemdsystemunitdir)"
+AC_SUBST([SYSTEMD_PATH])
 
 # Add configure option to build without library
 AC_ARG_ENABLE([library],
@@ -152,6 +154,7 @@ if test "x${with_test}" = "xyes"; then
     if test "x${with_library}" = "xno"; then
         AC_MSG_ERROR([--enable-library is required when specifying --enable-test])
     fi
+    AC_SUBST([ENABLE_TEST], '-DENABLE_TEST')
 fi
 
 AM_CONDITIONAL([WITH_LIBRARY], [test "x$with_library" = "xyes"])
@@ -182,7 +185,7 @@ AC_MSG_RESULT([
 $PACKAGE_NAME $VERSION configuration:
 
   Source code location:    ${srcdir}
-  Preprocessor flags:      ${AM_CPPFLAGS} ${CPPFLAGS}
+  Preprocessor flags:      ${AM_CPPFLAGS} ${CPPFLAGS} ${ENABLE_TEST}
   C compiler flags:        ${AM_CFLAGS} ${CFLAGS}
   Linker flags:            ${AM_LDFLAGS} ${LDFLAGS}
   Common install location: ${prefix}

@@ -1,6 +1,6 @@
 /*
  * Intel(R) Enclosure LED Utilities
- * Copyright (C) 2022-2023 Intel Corporation.
+ * Copyright (C) 2022-2024 Intel Corporation.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -53,7 +53,7 @@
 #define GPIO_REG_IND_TX_0		0x00
 #define GPIO_REG_IND_TX_1		0x01
 
-#define SG_RESPONSE_TIMEOUT (5 * 1000)	/* 1000 as miliseconds multiplier */
+#define SG_RESPONSE_TIMEOUT (5 * 1000)	/* 1000 as milliseconds multiplier */
 #define SCSI_MAX_CDB_LENGTH	0x10
 
 #define GPIO_STATUS_OK			0x00

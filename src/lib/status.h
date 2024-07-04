@@ -1,6 +1,6 @@
 /*
  * Intel(R) Enclosure LED Utilities
- * Copyright (C) 2022-2023 Intel Corporation.
+ * Copyright (C) 2022-2024 Intel Corporation.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -52,7 +52,7 @@ enum status_code {
 	STATUS_BLOCK_LIST_ERROR,
 	STATUS_VOLUM_LIST_ERROR,
 	STATUS_CNTRL_LIST_ERROR,
-	STATUS_SLAVE_LIST_ERROR,
+	STATUS_TAIL_LIST_ERROR,
 	STATUS_CNTNR_LIST_ERROR,
 	STATUS_INVALID_FORMAT,
 	STATUS_CMDLINE_ERROR=35,

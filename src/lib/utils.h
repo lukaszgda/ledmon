@@ -1,6 +1,6 @@
 /*
  * Intel(R) Enclosure LED Utilities
- * Copyright (C) 2022-2023 Intel Corporation.
+ * Copyright (C) 2022-2024 Intel Corporation.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -185,6 +185,17 @@ char *get_text_to_dest(const char *path, const char *name, char *dest, size_t de
  *         defval argument. 1 is returned for True, 0 for False.
  */
 int get_bool(const char *path, int defval, const char *name);
+
+/**
+ * @brief Check if path contains subpath, starting from beginning.
+ *
+ * @param[in]      path           Path to check.
+ * @param[in]      subpath        Expected subpath.
+ * @param[in]      subpath_strlen Subpath string length.
+ *
+ * @return True if subpath is included on path, False otherwise.
+ */
+bool is_subpath(const char * const path, const char * const subpath, size_t subpath_strlen);
 
 /**
  * @brief Writes a text to file.
@@ -438,8 +449,6 @@ int str_toui(unsigned int *dest, const char *strptr, char **endptr, int base);
  */
 char *get_path_hostN(const char *path);
 
-int match_string(struct led_ctx *ctx, const char *string, const char *pattern);
-
 /**
  */
 int get_log_fd(struct ledmon_conf *conf);
@@ -478,6 +487,9 @@ enum opt {
 	OPT_DEVICE,
 	OPT_SLOT,
 	OPT_STATE,
+	OPT_PRINT_PARAM,
+	OPT_IBPI,
+	OPT_TEST,
 	OPT_NULL_ELEMENT
 };
 
@@ -487,10 +499,8 @@ void setup_options(struct option **longopt, char **shortopt, int *options,
 int get_option_id(const char *optarg);
 status_t set_verbose_level(struct ledmon_conf *conf, int log_level);
 
-#define IPBI2STR_BUFF_SIZE 32
-const char *ibpi2str(enum led_ibpi_pattern ibpi, char *buf, size_t buf_size);
-const char *ibpi2str_table(enum led_ibpi_pattern ibpi, const char *names[], char *buf,
-			   size_t buf_size);
+const char *ibpi2str(enum led_ibpi_pattern ibpi);
+enum led_ibpi_pattern string2ibpi(const char *name);
 
 /**
  * @brief Returns ibpi2value entry if IBPI matches

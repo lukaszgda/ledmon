@@ -1,6 +1,6 @@
 /*
  * Intel(R) Enclosure LED Utilities
- * Copyright (C) 2022-2023 Intel Corporation.
+ * Copyright (C) 2022-2024 Intel Corporation.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -71,6 +71,12 @@ struct block_device {
  * cannot have NULL pointer assigned.
  */
 	char *sysfs_path;
+
+/**
+ * Main devnode we can reach this device. It may not match /sys/dev/block/MAJ:MIN
+ * Could be empty.
+ */
+	char devnode[PATH_MAX];
 
 /**
  * The pointer to a function which sends a message to driver in order to

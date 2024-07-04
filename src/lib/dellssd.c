@@ -43,7 +43,7 @@
 #include "list.h"
 #include "raid.h"
 #include "scsi.h"
-#include "slave.h"
+#include "tail.h"
 #include "smp.h"
 #include "status.h"
 #include "sysfs.h"
@@ -71,7 +71,7 @@ static const struct ibpi2value ibpi2ssd[] = {
 	{LED_IBPI_PATTERN_FAILED_DRIVE, BP_FAULT | BP_ONLINE},
 	{LED_IBPI_PATTERN_LOCATE, BP_IDENTIFY | BP_ONLINE},
 	{LED_IBPI_PATTERN_LOCATE_OFF, BP_ONLINE},
-	{LED_IBPI_PATTERN_UNKNOWN}
+	{LED_IBPI_PATTERN_UNKNOWN, 0}
 };
 
 #define DELL_OEM_NETFN                      0x30
@@ -116,7 +116,7 @@ int get_dell_server_type(struct led_ctx *ctx)
 	data[1] = DELL_GET_IDRAC_INFO;
 	data[2] = 0x02;
 	data[3] = 0x00;
-	rc = ipmicmd(ctx, BMC_SA, 0, APP_NETFN, APP_GET_SYSTEM_INFO, 4, data,
+	rc = ipmicmd(ctx, BMC_TA, 0, APP_NETFN, APP_GET_SYSTEM_INFO, 4, data,
 		     20, &rlen, rdata);
 	if (rc) {
 		lib_log(ctx, LED_LOG_LEVEL_DEBUG, "Unable to issue IPMI command GetSystemInfo\n");
@@ -179,7 +179,7 @@ static int ipmi_setled(struct led_ctx *ctx, int b, int d, int f, int state)
 		data[1] = DELL_OEM_STORAGE_GETDRVMAP_14G;
 		break;
 	}
-	rc = ipmicmd(ctx, BMC_SA, 0, DELL_OEM_NETFN, DELL_OEM_STORAGE_CMD, 8, data,
+	rc = ipmicmd(ctx, BMC_TA, 0, DELL_OEM_NETFN, DELL_OEM_STORAGE_CMD, 8, data,
 		     20, &rlen, rdata);
 	if (!rc) {
 		bay = rdata[7];
@@ -223,7 +223,7 @@ static int ipmi_setled(struct led_ctx *ctx, int b, int d, int f, int state)
 		data[1] = DELL_OEM_STORAGE_SETDRVSTATUS_14G;
 		break;
 	}
-	rc = ipmicmd(ctx, BMC_SA, 0, DELL_OEM_NETFN, DELL_OEM_STORAGE_CMD, 20, data,
+	rc = ipmicmd(ctx, BMC_TA, 0, DELL_OEM_NETFN, DELL_OEM_STORAGE_CMD, 20, data,
 		     20, &rlen, rdata);
 	if (rc) {
 		lib_log(ctx, LED_LOG_LEVEL_ERROR,
@@ -254,11 +254,9 @@ int dellssd_write(struct block_device *device, enum led_ibpi_pattern ibpi)
 	ibpi2val = get_by_ibpi(ibpi, ibpi2ssd, ARRAY_SIZE(ibpi2ssd));
 
 	if (ibpi2val->ibpi == LED_IBPI_PATTERN_UNKNOWN) {
-		char buf[IPBI2STR_BUFF_SIZE];
 
 		lib_log(device->cntrl->ctx, LED_LOG_LEVEL_INFO,
-			"SSD: Controller doesn't support %s pattern\n",
-			ibpi2str(ibpi, buf, sizeof(buf)));
+			"SSD: Controller doesn't support %s pattern\n", ibpi2str(ibpi));
 		__set_errno_and_return(EINVAL);
 	}
 

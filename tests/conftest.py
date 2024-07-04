@@ -1,21 +1,36 @@
 import logging
-import pytest
 
 LOGGER = logging.getLogger(__name__)
 
+store_params = [
+    ["--ledctl-binary", "src/ledctl/ledctl", "Path to the ledctl binary."],
+    [
+        "--slot-filters", "none",
+        "List comma separated. Filter out slots starting with filter."
+    ],
+    [
+        "--controller-filters", "none",
+        "List comma separated. Filter out controllers matching by name e.g. VMD, SCSI, NPEM."
+    ]
+]
+
+
 def pytest_addoption(parser):
-    parser.addoption("--ledctl-binary", action="store", default="/usr/sbin/ledctl")
-    parser.addoption("--slot-filters", action="store", default="")
+    for param, def_val, help_txt in store_params:
+        parser.addoption(param, action="store", default=def_val, help=help_txt)
+
 
 def pytest_collection_modifyitems(session, config, items):
-    LOGGER.info(f'[CONFIG] ledctl binary: {config.getoption("--ledctl-binary")}')
-    LOGGER.info(f'[CONFIG] slot filters: {config.getoption("--slot-filters")}')
+    for param in store_params:
+        LOGGER.info(f'[CONFIG] {param[0]}: {config.getoption(param[0])}')
+
 
 def pytest_generate_tests(metafunc):
-        ledtctl_option_value = metafunc.config.option.ledctl_binary
-        if 'ledctl_binary' in metafunc.fixturenames and ledtctl_option_value is not None:
-                metafunc.parametrize("ledctl_binary", [ledtctl_option_value])
-
-        slotfilters_option_value = metafunc.config.option.slot_filters
-        if 'slot_filters' in metafunc.fixturenames and slotfilters_option_value is not None:
-                metafunc.parametrize("slot_filters", [slotfilters_option_value.split(",")])
+    params = {
+        "ledctl_binary": metafunc.config.option.ledctl_binary,
+        "slot_filters": metafunc.config.option.slot_filters,
+        "controller_filters": metafunc.config.option.controller_filters
+    }
+    for param, val in params.items():
+        if param in metafunc.fixturenames and val is not None:
+            metafunc.parametrize(param, [val.split(",")])

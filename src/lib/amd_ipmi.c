@@ -54,7 +54,7 @@ const struct ibpi2value ibpi2amd_ipmi[] = {
 	{LED_IBPI_PATTERN_FAILED_ARRAY, 0x45},
 	{LED_IBPI_PATTERN_REBUILD, 0x46},
 	{LED_IBPI_PATTERN_HOTSPARE, 0x47},
-	{LED_IBPI_PATTERN_UNKNOWN}
+	{LED_IBPI_PATTERN_UNKNOWN, 0}
 };
 
 #define MG9098_CHIP_ID_REG	0x63
@@ -65,8 +65,8 @@ const struct ibpi2value ibpi2amd_ipmi[] = {
 #define AMD_ETHANOL_X_CHANNEL	0x0d
 #define AMD_DAYTONA_X_CHANNEL	0x17
 
-#define AMD_BASE_SLAVE_ADDR	0xc0
-#define AMD_NVME_SLAVE_ADDR	0xc4
+#define AMD_BASE_TAIL_ADDR	0xc0
+#define AMD_NVME_TAIL_ADDR	0xc4
 
 /* The path we are given should be similar to
  * /sys/devices/pci0000:e0/0000:e0:03.3/0000:e3:00.0
@@ -254,40 +254,40 @@ static int _ipmi_platform_channel(struct amd_drive *drive)
 	return rc;
 }
 
-static int _ipmi_platform_slave_address(struct amd_drive *drive)
+static int _ipmi_platform_tail_address(struct amd_drive *drive)
 {
 	int rc = 0;
 
 	switch (amd_ipmi_platform) {
 	case AMD_PLATFORM_ETHANOL_X:
-		drive->slave_addr = AMD_BASE_SLAVE_ADDR;
+		drive->tail_addr = AMD_BASE_TAIL_ADDR;
 		break;
 	case AMD_PLATFORM_DAYTONA_X:
 		if (drive->dev == AMD_NO_DEVICE) {
-			/* Assume base slave address, we may not be able
+			/* Assume base tail address, we may not be able
 			 * to retrieve a valid amd_drive yet.
 			 */
-			drive->slave_addr = AMD_BASE_SLAVE_ADDR;
+			drive->tail_addr = AMD_BASE_TAIL_ADDR;
 		} else if (drive->dev == AMD_NVME_DEVICE) {
 			/* On DaytonaX systems only drive bays 19 - 24
-			 * support NVMe devices so use the slave address
+			 * support NVMe devices so use the tail address
 			 * for the corresponding MG9098 chip.
 			 */
-			drive->slave_addr = AMD_NVME_SLAVE_ADDR;
+			drive->tail_addr = AMD_NVME_TAIL_ADDR;
 		} else {
 			if (drive->port <= 8)
-				drive->slave_addr = AMD_BASE_SLAVE_ADDR;
+				drive->tail_addr = AMD_BASE_TAIL_ADDR;
 			else if (drive->port > 8 && drive->port < 17)
-				drive->slave_addr = AMD_BASE_SLAVE_ADDR + 2;
+				drive->tail_addr = AMD_BASE_TAIL_ADDR + 2;
 			else
-				drive->slave_addr = AMD_NVME_SLAVE_ADDR;
+				drive->tail_addr = AMD_NVME_TAIL_ADDR;
 		}
 
 		break;
 	default:
 		rc = -1;
 		lib_log(drive->ctx, LED_LOG_LEVEL_ERROR,
-			"AMD Platform does not have a defined IPMI slave address\n");
+			"AMD Platform does not have a defined IPMI tail address\n");
 		break;
 	}
 
@@ -305,12 +305,12 @@ static int _set_ipmi_register(int enable, uint8_t reg, struct amd_drive *drive)
 	memset(cmd_data, 0, sizeof(cmd_data));
 
 	rc = _ipmi_platform_channel(drive);
-	rc |= _ipmi_platform_slave_address(drive);
+	rc |= _ipmi_platform_tail_address(drive);
 	if (rc)
 		return -1;
 
 	cmd_data[0] = drive->channel;
-	cmd_data[1] = drive->slave_addr;
+	cmd_data[1] = drive->tail_addr;
 	cmd_data[2] = 0x1;
 	cmd_data[3] = reg;
 
@@ -319,11 +319,11 @@ static int _set_ipmi_register(int enable, uint8_t reg, struct amd_drive *drive)
 
 	lib_log(drive->ctx, LED_LOG_LEVEL_DEBUG, "Retrieving current register status\n");
 	lib_log(drive->ctx, LED_LOG_LEVEL_DEBUG, REG_FMT_2, "channel", cmd_data[0],
-		"slave addr", cmd_data[1]);
+		"tail addr", cmd_data[1]);
 	lib_log(drive->ctx, LED_LOG_LEVEL_DEBUG, REG_FMT_2, "len", cmd_data[2],
 		"register", cmd_data[3]);
 
-	rc = ipmicmd(drive->ctx, BMC_SA, 0x0, AMD_IPMI_NETFN, AMD_IPMI_CMD, 4, &cmd_data,
+	rc = ipmicmd(drive->ctx, BMC_TA, 0x0, AMD_IPMI_NETFN, AMD_IPMI_CMD, 4, &cmd_data,
 		     1, &data_sz, &status);
 	if (rc) {
 		lib_log(drive->ctx, LED_LOG_LEVEL_ERROR,
@@ -346,12 +346,12 @@ static int _set_ipmi_register(int enable, uint8_t reg, struct amd_drive *drive)
 	lib_log(drive->ctx, LED_LOG_LEVEL_DEBUG, "Updating register status: %x -> %x\n",
 		drives_status, new_drives_status);
 	lib_log(drive->ctx, LED_LOG_LEVEL_DEBUG, REG_FMT_2, "channel", cmd_data[0],
-		"slave addr", cmd_data[1]);
+		"tail addr", cmd_data[1]);
 	lib_log(drive->ctx, LED_LOG_LEVEL_DEBUG, REG_FMT_2, "len", cmd_data[2],
 		"register", cmd_data[3]);
 	lib_log(drive->ctx, LED_LOG_LEVEL_DEBUG, REG_FMT_1, "status", cmd_data[4]);
 
-	rc = ipmicmd(drive->ctx, BMC_SA, 0x0, AMD_IPMI_NETFN, AMD_IPMI_CMD, 5, &cmd_data,
+	rc = ipmicmd(drive->ctx, BMC_TA, 0x0, AMD_IPMI_NETFN, AMD_IPMI_CMD, 5, &cmd_data,
 		     1, &data_sz, &status);
 	if (rc) {
 		lib_log(drive->ctx, LED_LOG_LEVEL_ERROR, "Could not enable register %x\n", reg);
@@ -369,19 +369,17 @@ static int _enable_smbus_control(struct amd_drive *drive)
 
 static int _change_ibpi_state(struct amd_drive *drive, enum led_ibpi_pattern ibpi, bool enable)
 {
-	char buf[IPBI2STR_BUFF_SIZE];
 	const struct ibpi2value *ibpi2val = get_by_ibpi(ibpi, ibpi2amd_ipmi,
 							ARRAY_SIZE(ibpi2amd_ipmi));
 
 	if (ibpi2val->ibpi == LED_IBPI_PATTERN_UNKNOWN) {
 		lib_log(drive->ctx, LED_LOG_LEVEL_INFO,
-			"AMD_IPMI: Controller doesn't support %s pattern\n",
-			ibpi2str(ibpi, buf, sizeof(buf)));
+			"AMD_IPMI: Controller doesn't support %s pattern\n", ibpi2str(ibpi));
 		return LED_STATUS_INVALID_STATE;
 	}
 
-	lib_log(drive->ctx, LED_LOG_LEVEL_DEBUG, "%s %s LED\n",
-		(enable) ? "Enabling":"Disabling", ibpi2str(ibpi, buf, sizeof(buf)));
+	lib_log(drive->ctx, LED_LOG_LEVEL_DEBUG, "%s %s LED\n", (enable) ? "Enabling" : "Disabling",
+		ibpi2str(ibpi));
 
 	return _set_ipmi_register(enable, ibpi2val->value, drive);
 }
@@ -409,17 +407,17 @@ int _amd_ipmi_em_enabled(const char *path, struct led_ctx *ctx)
 	memset(&drive, 0, sizeof(struct amd_drive));
 
 	rc = _ipmi_platform_channel(&drive);
-	rc |= _ipmi_platform_slave_address(&drive);
+	rc |= _ipmi_platform_tail_address(&drive);
 	if (rc)
 		return -1;
 
 	cmd_data[0] = drive.channel;
-	cmd_data[1] = drive.slave_addr;
+	cmd_data[1] = drive.tail_addr;
 	cmd_data[2] = 0x1;
 	cmd_data[3] = MG9098_CHIP_ID_REG;
 
 	status = 0;
-	rc = ipmicmd(ctx, BMC_SA, 0x0, AMD_IPMI_NETFN, AMD_IPMI_CMD, 4, &cmd_data,
+	rc = ipmicmd(ctx, BMC_TA, 0x0, AMD_IPMI_NETFN, AMD_IPMI_CMD, 4, &cmd_data,
 		     1, &data_sz, &status);
 
 	if (rc) {
@@ -442,14 +440,12 @@ int _amd_ipmi_write(struct block_device *device, enum led_ibpi_pattern ibpi)
 {
 	int rc;
 	struct amd_drive drive;
-	char buf[IPBI2STR_BUFF_SIZE];
 
 	memset(&drive, 0, sizeof(struct amd_drive));
 	drive.ctx = device->cntrl->ctx;
 
 	lib_log(drive.ctx, LED_LOG_LEVEL_INFO, "\n");
-	lib_log(drive.ctx, LED_LOG_LEVEL_INFO, "Setting %s...",
-		ibpi2str(ibpi, buf, sizeof(buf)));
+	lib_log(drive.ctx, LED_LOG_LEVEL_INFO, "Setting %s...", ibpi2str(ibpi));
 
 	rc = _get_amd_ipmi_drive(device->cntrl_path, &drive);
 	if (rc)
