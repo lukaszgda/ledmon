@@ -1,22 +1,5 @@
-/*
- * Intel(R) Enclosure LED Utilities
- * Copyright (C) 2022-2024 Intel Corporation.
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
- *
- */
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (C) 2022 Intel Corporation.
 
 #ifndef _BLOCK_H_INCLUDED_
 #define _BLOCK_H_INCLUDED_
@@ -32,30 +15,6 @@
 #include "sysfs.h"
 
 struct block_device;
-
-/**
- * @brief Pointer to a send message function.
- *
- * The pointer to a function which knows how to send LED message to a driver of
- * storage controller using the given protocol.
- *
- * @param[in]    path             path in sysfs to a host device
- *                                @see block_device::cntrl_path.
- * @param[in]    ibpi             an IBPI pattern (state) to visualize.
- *
- * @return 1 if successful, otherwise the function returns 0.
- */
-typedef int (*send_message_t) (struct block_device *device,
-			       enum led_ibpi_pattern ibpi);
-
-/**
- * @brief Pointer to a flush buffer function.
- *
- * @param[in]    device           pointer to a block device
- *
- * @return 1 if successful, otherwise the function returns 0.
- */
-typedef int (*flush_message_t) (struct block_device *device);
 
 /**
  * @brief Describes a block device.
@@ -80,15 +39,21 @@ struct block_device {
 
 /**
  * The pointer to a function which sends a message to driver in order to
- * control LEDs in an enclosure or DAS system - @see send_message_t for details.
- * This field cannot have NULL pointer assigned.
+ * control LEDs in an enclosure or DAS system.
+ * Params:
+ *	device - pointer to a block device.
+ *	ibpi - an IBPI pattern (state) to visualize.
+ * Return: STATUS_SUCCESS if successful, otherwise a valid status_t status code.
  */
-	send_message_t send_fn;
+	status_t (*send_message_fn)(struct block_device *device, enum led_ibpi_pattern ibpi);
 
 /**
- * The pointer to a function which flush buffers filled by send_fn.
+ * The pointer to a function which flush buffers filled by send_message_fn.
+ * Params:
+ *	device - pointer to a block device.
+ * Return 1 if successful, otherwise the function returns 0.
  */
-	flush_message_t flush_fn;
+	int (*flush_message_fn)(struct block_device *device);
 
 /**
  * Canonical path to block device where enclosure management fields are located.

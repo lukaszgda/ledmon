@@ -1,22 +1,5 @@
-/*
- * Intel(R) Enclosure LED Utilities
- * Copyright (C) 2022-2024 Intel Corporation.
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
- *
- */
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (C) 2022 Intel Corporation.
 
 #include <dirent.h>
 #include <inttypes.h>
@@ -413,7 +396,7 @@ static int ses_set_message(enum led_ibpi_pattern ibpi, struct ses_slot_ctrl_elem
 	return 0;
 }
 
-int ses_write_msg(enum led_ibpi_pattern ibpi, struct ses_pages *sp, int idx)
+status_t ses_write_msg(enum led_ibpi_pattern ibpi, struct ses_pages *sp, int idx)
 {
 	/* Move do descriptors */
 	struct ses_slot_ctrl_elem *descriptors = (void *)(sp->page2.buf + 8);
@@ -447,7 +430,7 @@ int ses_write_msg(enum led_ibpi_pattern ibpi, struct ses_pages *sp, int idx)
 	if (desc_element) {
 		int ret = ses_set_message(ibpi, desc_element);
 		if (ret)
-			return ret;
+			return STATUS_INVALID_STATE;
 
 		sp->changes++;
 
@@ -460,10 +443,10 @@ int ses_write_msg(enum led_ibpi_pattern ibpi, struct ses_pages *sp, int idx)
 		if (local_element_type != SES_ARRAY_DEVICE_SLOT)
 			desc_element->array_slot_control = 0;
 
-		return 0;
+		return STATUS_SUCCESS;
 	}
 
-	return 1;
+	return STATUS_FILE_WRITE_ERROR;
 }
 
 int ses_send_diag(int fd, struct ses_pages *sp)

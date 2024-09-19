@@ -1,22 +1,5 @@
-/*
- * Intel(R) Enclosure LED Utilities
- * Copyright (C) 2022-2024 Intel Corporation.
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
- *
- */
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (C) 2022 Intel Corporation.
 
 #include <dirent.h>
 #include <errno.h>
@@ -116,31 +99,30 @@ int scsi_get_enclosure(struct led_ctx *ctx, struct block_device *device)
 
 /**
  */
-int scsi_ses_write(struct block_device *device, enum led_ibpi_pattern ibpi)
+status_t scsi_ses_write(struct block_device *device, enum led_ibpi_pattern ibpi)
 {
 	if (!device || !device->sysfs_path || !device->enclosure ||
 	    device->encl_index == -1)
-		__set_errno_and_return(EINVAL);
+		return STATUS_DATA_ERROR;
 
 	/* write only if state has changed */
 	if (ibpi == device->ibpi_prev)
-		return 1;
+		return STATUS_SUCCESS;
 
 	if ((ibpi < LED_IBPI_PATTERN_NORMAL) || (ibpi > LED_SES_REQ_FAULT))
-		__set_errno_and_return(ERANGE);
+		return LED_STATUS_INVALID_STATE;
 
 	return ses_write_msg(ibpi, &device->enclosure->ses_pages, device->encl_index);
 }
 
-int scsi_ses_write_enclosure(struct enclosure_device *enclosure, int idx,
-			     enum led_ibpi_pattern ibpi)
+status_t scsi_ses_write_enclosure(struct enclosure_device *enclosure, int idx,
+				  enum led_ibpi_pattern ibpi)
 {
-	if (!enclosure || idx == -1) {
-		__set_errno_and_return(EINVAL);
-	}
+	if (!enclosure || idx == -1)
+		return STATUS_DATA_ERROR;
 
 	if ((ibpi < LED_IBPI_PATTERN_NORMAL) || (ibpi > LED_SES_REQ_FAULT))
-		__set_errno_and_return(ERANGE);
+		return STATUS_INVALID_STATE;
 
 	return ses_write_msg(ibpi, &enclosure->ses_pages, idx);
 }

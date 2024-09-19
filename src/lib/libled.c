@@ -1,23 +1,7 @@
-/*
- * LED library
- *
- * Copyright (C) 2022-2023 Red Hat, Inc.
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
- *
- */
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (C) 2022-2023 Red Hat, Inc.
+
+/* LED library */
 
 #include "led/libled.h"
 
@@ -135,7 +119,7 @@ led_status_t led_set(struct led_ctx *ctx, const char *path, enum led_ibpi_patter
 
 	list_for_each(sysfs_get_block_devices(ctx), device) {
 		if (strcmp(device->sysfs_path, path) == 0) {
-			device->send_fn(device, ibpi);
+			device->send_message_fn(device, ibpi);
 			return LED_STATUS_SUCCESS;
 		}
 	}
@@ -147,7 +131,7 @@ void led_flush(struct led_ctx *ctx)
 	struct block_device *device;
 
 	list_for_each(sysfs_get_block_devices(ctx), device) {
-		device->flush_fn(device);
+		device->flush_message_fn(device);
 	}
 }
 

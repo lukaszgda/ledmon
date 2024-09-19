@@ -1,23 +1,5 @@
-/*
- * Intel(R) Enclosure LED Utilities
- * Copyright (C) 2022-2024 Intel Corporation.
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
- *
- */
-
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (C) 2022 Intel Corporation.
 
 #include <dirent.h>
 #include <errno.h>
@@ -427,28 +409,28 @@ struct gpio_tx_register_byte *get_bdev_ibpi_buffer(struct block_device *bdevice)
 
 /**
  */
-int scsi_smp_fill_buffer(struct block_device *device, enum led_ibpi_pattern ibpi)
+status_t scsi_smp_fill_buffer(struct block_device *device, enum led_ibpi_pattern ibpi)
 {
 	const char *sysfs_path = device->cntrl_path;
 	struct gpio_tx_register_byte *gpio_tx;
 
 	if (sysfs_path == NULL)
-		__set_errno_and_return(EINVAL);
+		return STATUS_NULL_POINTER;
 	if ((ibpi < LED_IBPI_PATTERN_NORMAL) || (ibpi > LED_IBPI_PATTERN_LOCATE_OFF))
-		__set_errno_and_return(ERANGE);
+		return STATUS_INVALID_STATE;
 	if (!device->cntrl) {
 		/* Unable to log here as we need the device->cntrl to not be null to access ctx */
-		__set_errno_and_return(ENODEV);
+		return STATUS_NULL_POINTER;
 	}
 	if (device->cntrl->cntrl_type != LED_CNTRL_TYPE_SCSI) {
 		lib_log(device->cntrl->ctx, LED_LOG_LEVEL_DEBUG,
 			"No SCSI ctrl dev '%s'", strstr(sysfs_path, "host"));
-		__set_errno_and_return(EINVAL);
+		return STATUS_FILE_WRITE_ERROR;
 	}
 	if (!device->host) {
 		lib_log(device->cntrl->ctx, LED_LOG_LEVEL_DEBUG,
 			"No host for '%s'", strstr(sysfs_path, "host"));
-		__set_errno_and_return(ENODEV);
+		return STATUS_NULL_POINTER;
 	}
 
 	if (device->cntrl->isci_present && !ibpi2sgpio[ibpi].support_mask) {
@@ -462,14 +444,14 @@ int scsi_smp_fill_buffer(struct block_device *device, enum led_ibpi_pattern ibpi
 				"pattern %s not supported for device %s", ibpi2str(ibpi),
 				device->sysfs_path);
 		}
-		__set_errno_and_return(ENOTSUP);
+		return STATUS_INVALID_STATE;
 	}
 
 	gpio_tx = get_bdev_ibpi_buffer(device);
 	if (!gpio_tx) {
 		lib_log(device->cntrl->ctx, LED_LOG_LEVEL_DEBUG,
 			"%s(): no IBPI buffer. Skipping.", __func__);
-		__set_errno_and_return(ENODEV);
+		return STATUS_NULL_POINTER;
 	}
 
 	if (device->cntrl->isci_present) {
@@ -490,7 +472,7 @@ int scsi_smp_fill_buffer(struct block_device *device, enum led_ibpi_pattern ibpi
 	if (ibpi != device->ibpi_prev)
 		device->host->flush = 1;
 
-	return 1;
+	return STATUS_SUCCESS;
 }
 
 int scsi_smp_write_buffer(struct block_device *device)

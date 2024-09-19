@@ -1,22 +1,5 @@
-/*
- * Intel(R) Enclosure LED Utilities
- * Copyright (C) 2022-2024 Intel Corporation.
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
- *
- */
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (C) 2022 Intel Corporation.
 
 #include <errno.h>
 #include <stdio.h>
@@ -287,10 +270,7 @@ status_t npem_set_slot(struct led_ctx *ctx, const char *sysfs_path, enum led_ibp
 	return STATUS_SUCCESS;
 }
 
-/*
- * FIXME: Error is not checked, no need to translate to errno based codes.
- */
-int npem_write(struct block_device *device, enum led_ibpi_pattern ibpi)
+status_t npem_write(struct block_device *device, enum led_ibpi_pattern ibpi)
 {
 	if (ibpi == device->ibpi_prev)
 		return STATUS_SUCCESS;

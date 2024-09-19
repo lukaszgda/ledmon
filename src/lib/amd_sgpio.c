@@ -1,22 +1,7 @@
-/*
- * AMD SGPIO LED control
- * Copyright (C) 2023, Advanced Micro Devices, Inc.
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
- *
- */
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (C) 2023, Advanced Micro Devices, Inc.
+
+/* AMD SGPIO LED control */
 
 #include <errno.h>
 #include <fcntl.h>
@@ -93,7 +78,7 @@ DECLARE_SGPIO(req, frame_type, 0, 0xFFL)
 DECLARE_SGPIO(req, function, 8, 0xFFL)
 DECLARE_SGPIO(req, reg_type, 16, 0xFFL)
 DECLARE_SGPIO(req, reg_index, 24, 0xFFL)
-DECLARE_SGPIO(req, reg_count, 32, 0xFFL)
+DECLARE_SGPIO(req, reg_count, 32, 0xFFULL)
 
 typedef uint32_t sgpio_amd_t;
 
@@ -110,12 +95,12 @@ DECLARE_SGPIO_RO(cfg, cfg_reg_count, 20, 0x7);
 DECLARE_SGPIO(cfg, gpio_enable, 23, 0x1);
 DECLARE_SGPIO_RO(cfg, drive_count, 24, 0xFF);
 
-DECLARE_SGPIO(cfg, blink_gen_a, 40, 0xFL);
-DECLARE_SGPIO(cfg, blink_gen_b, 44, 0xFL);
-DECLARE_SGPIO(cfg, max_on, 48, 0xFL);
-DECLARE_SGPIO(cfg, force_off, 52, 0xFL);
-DECLARE_SGPIO(cfg, stretch_on, 56, 0xFL);
-DECLARE_SGPIO(cfg, stretch_off, 60, 0xFL);
+DECLARE_SGPIO(cfg, blink_gen_a, 40, 0xFULL);
+DECLARE_SGPIO(cfg, blink_gen_b, 44, 0xFULL);
+DECLARE_SGPIO(cfg, max_on, 48, 0xFULL);
+DECLARE_SGPIO(cfg, force_off, 52, 0xFULL);
+DECLARE_SGPIO(cfg, stretch_on, 56, 0xFULL);
+DECLARE_SGPIO(cfg, stretch_off, 60, 0xFULL);
 
 #define DECLARE_LED(name, shift, mask)					\
 	uint32_t	_led_##name##_shift = shift;			\
@@ -848,20 +833,22 @@ int _amd_sgpio_em_enabled(const char *path, struct led_ctx *ctx)
 	return rc ? 0 : 1;
 }
 
-int _amd_sgpio_write(struct block_device *device, enum led_ibpi_pattern ibpi)
+status_t _amd_sgpio_write(struct block_device *device, enum led_ibpi_pattern ibpi)
 {
 	/* write only if state has changed */
 	if (ibpi == device->ibpi_prev)
-		return 1;
+		return STATUS_SUCCESS;
 
 	if ((ibpi < LED_IBPI_PATTERN_NORMAL) || (ibpi > LED_IBPI_PATTERN_LOCATE_OFF))
-		__set_errno_and_return(ERANGE);
+		return STATUS_INVALID_STATE;
 
 	if ((ibpi == LED_IBPI_PATTERN_DEGRADED) ||
 	    (ibpi == LED_IBPI_PATTERN_FAILED_ARRAY))
-		__set_errno_and_return(ENOTSUP);
+		return STATUS_INVALID_STATE;
 
-	return _set_ibpi(device, ibpi);
+	if (_set_ibpi(device, ibpi))
+		return STATUS_FILE_WRITE_ERROR;
+	return STATUS_SUCCESS;
 }
 
 char *_amd_sgpio_get_path(const char *cntrl_path, struct led_ctx *ctx)

@@ -1,22 +1,5 @@
-/*
- * Intel(R) Enclosure LED Utilities
- * Copyright (C) 2022-2024 Intel Corporation.
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
- *
- */
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (C) 2022 Intel Corporation.
 
 #include <errno.h>
 #include <limits.h>
@@ -182,7 +165,7 @@ status_t vmdssd_write_attention_buf(struct pci_slot *slot, enum led_ibpi_pattern
 	return STATUS_SUCCESS;
 }
 
-int vmdssd_write(struct block_device *device, enum led_ibpi_pattern ibpi)
+status_t vmdssd_write(struct block_device *device, enum led_ibpi_pattern ibpi)
 {
 	struct pci_slot *slot;
 	char *short_name = strrchr(device->sysfs_path, '/');
@@ -193,16 +176,16 @@ int vmdssd_write(struct block_device *device, enum led_ibpi_pattern ibpi)
 		short_name = device->sysfs_path;
 
 	if (ibpi == device->ibpi_prev)
-		return 0;
+		return STATUS_SUCCESS;
 
 	if ((ibpi < LED_IBPI_PATTERN_NORMAL) || (ibpi > LED_IBPI_PATTERN_LOCATE_OFF))
-		__set_errno_and_return(ERANGE);
+		return STATUS_INVALID_STATE;
 
 	slot = vmdssd_find_pci_slot(device->cntrl->ctx, device->sysfs_path);
 	if (!slot) {
 		lib_log(device->cntrl->ctx, LED_LOG_LEVEL_DEBUG,
 			"PCI hotplug slot not found for %s\n", short_name);
-		__set_errno_and_return(ENODEV);
+		return STATUS_NULL_POINTER;
 	}
 
 	return vmdssd_write_attention_buf(slot, ibpi);

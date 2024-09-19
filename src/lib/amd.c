@@ -1,22 +1,7 @@
-/*
- * AMD LED control
- * Copyright (C) 2023, Advanced Micro Devices, Inc.
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
- *
- */
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (C) 2023, Advanced Micro Devices, Inc.
+
+/* AMD LED control */
 
 #include <errno.h>
 #include <fcntl.h>
@@ -142,30 +127,23 @@ int amd_em_enabled(const char *path, struct led_ctx *ctx)
 	return rc;
 }
 
-int amd_write(struct block_device *device, enum led_ibpi_pattern ibpi)
+status_t amd_write(struct block_device *device, enum led_ibpi_pattern ibpi)
 {
-	int rc;
-
 	/* write only if state has changed */
 	if (ibpi == device->ibpi_prev)
-		return 1;
+		return STATUS_SUCCESS;
 
 	switch (amd_interface) {
 	case AMD_INTF_SGPIO:
-		rc = _amd_sgpio_write(device, ibpi);
-		break;
+		return _amd_sgpio_write(device, ibpi);
 	case AMD_INTF_IPMI:
-		rc = _amd_ipmi_write(device, ibpi);
-		break;
+		return _amd_ipmi_write(device, ibpi);
 	case AMD_INTF_UNSET:
 	default:
 		lib_log(device->cntrl->ctx, LED_LOG_LEVEL_ERROR,
 			"Unsupported AMD interface %u\n", amd_interface);
-		rc = -EOPNOTSUPP;
-		break;
+		return STATUS_FILE_WRITE_ERROR;
 	}
-
-	return rc;
 }
 
 char *amd_get_path(const char *cntrl_path, const char *sysfs_path, struct led_ctx *ctx)

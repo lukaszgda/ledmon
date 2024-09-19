@@ -1,22 +1,5 @@
-/*
- * Intel(R) Enclosure LED Utilities
- * Copyright (C) 2022-2024 Intel Corporation.
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
- *
- */
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (C) 2022 Intel Corporation.
 
 #ifndef _SCSI_H_INCLUDED
 #define _SCSI_H_INCLUDED
@@ -44,9 +27,9 @@ char *scsi_get_host_path(const char *path, const char *cntrl_path);
  * @param[in]      device         Sysfs path of a drive in enclosure.
  * @param[in]      ibpi           IBPI pattern to visualize.
  *
- * @return 0 on success, otherwise error.
+ * @return STATUS_SUCCESS on success, otherwise a valid status_t status code.
  */
-int scsi_ses_write(struct block_device *device, enum led_ibpi_pattern ibpi);
+status_t scsi_ses_write(struct block_device *device, enum led_ibpi_pattern ibpi);
 
 /**
  * @brief Sends message to SES processor of an enclosure.
@@ -91,10 +74,10 @@ struct block_device *locate_block_by_sas_addr(struct led_ctx *ctx, uint64_t sas_
  * @param[in]      idx            slot in enclosure
  * @param[in]      ibpi           IBPI pattern to visualize.
  *
- * @return 0 on success, otherwise error.
+ * @return STATUS_SUCCESS on success, otherwise a valid status_t status code.
  */
-int scsi_ses_write_enclosure(struct enclosure_device *enclosure, int idx,
-			     enum led_ibpi_pattern ibpi);
+status_t scsi_ses_write_enclosure(struct enclosure_device *enclosure, int idx,
+				  enum led_ibpi_pattern ibpi);
 
 /**
  * @brief Sends message to SES processor of an enclosure.

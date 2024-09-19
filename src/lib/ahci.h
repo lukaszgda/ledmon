@@ -1,22 +1,5 @@
-/*
- * Intel(R) Enclosure LED Utilities
- * Copyright (C) 2022-2024 Intel Corporation.
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
- *
- */
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (C) 2022 Intel Corporation.
 
 #ifndef _AHCI_H_INCLUDED_
 #define _AHCI_H_INCLUDED_
@@ -47,9 +30,8 @@ char *ahci_get_port_path(const char *path);
  * @param[in]      ibpi           IBPI pattern to visualize on LEDs associated
  *                                with the given slot.
  *
- * @return Number of bytes send to controller, -1 means error occurred and
- *         errno has additional error information.
+ * @return STATUS_SUCCESS if successful, otherwise a valid status_t status code.
  */
-int ahci_sgpio_write(struct block_device *path, enum led_ibpi_pattern ibpi);
+status_t ahci_sgpio_write(struct block_device *path, enum led_ibpi_pattern ibpi);
 
 #endif				/* _AHCI_H_INCLUDED_ */
